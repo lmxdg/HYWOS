@@ -102,9 +102,9 @@ impl Ui {
                 while i < n {
                     let c = src[i];
                     dst[i] = if swap {
-                        ((c & 0xff) << 16) | (c & 0x00ff00) | ((c >> 16) & 0xff)
+                        ((c & 0xff) << 16) | (c & 0x00ff00) | ((c >> 16) & 0xff) | 0xff00_0000
                     } else {
-                        c
+                        c | 0xff00_0000
                     };
                     i += 1;
                 }
@@ -115,9 +115,9 @@ impl Ui {
                     while x < fw {
                         let c = src[y * fw + x];
                         dst[y * fstride + x] = if swap {
-                            ((c & 0xff) << 16) | (c & 0x00ff00) | ((c >> 16) & 0xff)
+                            ((c & 0xff) << 16) | (c & 0x00ff00) | ((c >> 16) & 0xff) | 0xff00_0000
                         } else {
-                            c
+                            c | 0xff00_0000
                         };
                         x += 1;
                     }
@@ -125,6 +125,7 @@ impl Ui {
                 }
             }
         }
+        self.front.flush();
     }
 
     fn w(&self) -> i32 { self.g.w as i32 }
@@ -285,8 +286,8 @@ impl Ui {
         g.rect(0, 30, w, 1, rgb(255, 255, 255), 16);
         g.circle(18, 15, 7, rgb(110, 200, 255), 255);
         g.circle(18, 15, 3, rgb(230, 246, 255), 255);
-        g.text(32, 7, "HYWOS 1.0.1", rgb(232, 242, 255), 1);
-        g.text(32 + text_width("HYWOS 1.0.1", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
+        g.text(32, 7, "HYWOS 1.0.2", rgb(232, 242, 255), 1);
+        g.text(32 + text_width("HYWOS 1.0.2", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
         let c = hw::cpu();
         let mut b = [0u8; 64];
         let mut l = 0;

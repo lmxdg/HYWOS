@@ -84,6 +84,18 @@ impl Gfx {
         Gfx { fb: core::ptr::null_mut(), w: 0, h: 0, stride: 0, swap: false, ok: false }
     }
 
+    pub unsafe fn from_device(fb: *mut u32, w: usize, h: usize, stride: usize, swap: bool, ok: bool) -> Gfx {
+        SCR_W = w as i32;
+        SCR_H = h as i32;
+        Gfx { fb, w, h, stride, swap, ok }
+    }
+
+    pub fn flush(&self) {
+        if self.ok {
+            unsafe { crate::video::flush(); }
+        }
+    }
+
     pub unsafe fn init() -> Gfx {
         let gop = bs_locate_protocol(&GUID_GOP) as *mut Gop;
         if gop.is_null() {

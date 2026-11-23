@@ -163,6 +163,27 @@ impl InputState {
         self.right_clicked = false;
         self.moved = false;
         self.scroll = 0;
+        crate::ps2::poll();
+        if crate::ps2::mouse_ok() {
+            let (dx, dy, btn, moved) = crate::ps2::take_mouse();
+            if moved {
+                self.x += dx;
+                self.y += dy;
+                if self.x < 0 { self.x = 0; }
+                if self.y < 0 { self.y = 0; }
+                if self.x >= w - 1 { self.x = w - 1; }
+                if self.y >= h - 1 { self.y = h - 1; }
+                self.moved = true;
+            }
+            self.left = btn & 1 != 0;
+            self.right = btn & 2 != 0;
+            if self.left && !self.prev_left { self.clicked = true; }
+            if self.right && !self.prev_right { self.right_clicked = true; }
+            self.prev_left = self.left;
+            self.prev_right = self.right;
+            self.down = self.left;
+            return;
+        }
         if POINTER.is_null() { return; }
         let fp = POINTER as *mut *mut core::ffi::c_void;
         let f2 = *fp.add(1);

@@ -281,6 +281,12 @@ pub fn con_print(s: &str) {
 
 pub fn read_key() -> Option<(u16, u16)> {
     unsafe {
+        crate::ps2::poll();
+        if let Some(k) = crate::ps2::take_key() {
+            return Some(k);
+        }
+    }
+    unsafe {
         let st = &*ST;
         if st.con_in.is_null() { return None; }
         let f: extern "efiapi" fn(*mut SimpleTextInput, *mut InputKey) -> Status =

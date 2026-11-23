@@ -3,8 +3,12 @@
 
 mod anim;
 mod apps;
+mod audio;
 mod cjk;
 mod logo;
+mod port;
+mod ps2;
+mod video;
 mod efi;
 mod font;
 mod fs;
@@ -25,14 +29,15 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
             return 1;
         }
         BS = (*ST).boot_services;
-        debug_print("HYWOS 1.0.1 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.0.2 (x86_64 UEFI, Rust no_std)");
         hw::firmware_vendor();
         debug_print("Firmware detected");
         bs_stall(60_000);
 
-        let g = Gfx::init();
+        let gop = Gfx::init();
+        let g = video::probe(gop);
         if !g.ok {
-            debug_print("FATAL: no graphics output protocol");
+            debug_print("FATAL: no usable graphics device");
             loop { bs_stall(1_000_000); }
         }
         debug_print("[stage] gfx ok");
@@ -72,6 +77,9 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
         hw::net_probe();
         debug_print("[stage] net done");
         hw::pointer_init();
+        ps2::init();
+        serial_print("[input] PS/2 initialized");
+        audio::init();
         debug_print("[stage] pointer done");
         hw::cache_time();
         debug_print("[stage] rtc cached");
@@ -87,6 +95,7 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
 
         debug_print("[stage] ui begin");
         let mut ui = ui::Ui::new(g);
+        audio::chime();
         debug_print("[stage] ui loop");
         loop {
             ui.tick();

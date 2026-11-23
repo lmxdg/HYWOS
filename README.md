@@ -1,5 +1,9 @@
 # HYWOS 1.0.0 «Harmony of Stars»
 
+<p align="center">
+  <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
+</p>
+
 HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统。它不依赖任何第三方 crate，
 以 `no_std` 方式直接运行在 UEFI 固件之上，自带 GOP 图形合成器、桌面环境、
 应用框架、文件系统和一套贴近 Linux 使用习惯的终端。

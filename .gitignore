@@ -1,0 +1,8 @@
+target/
+build/
+*.ppm
+*.log
+*.img
+*.iso
+*.efi
+.DS_Store

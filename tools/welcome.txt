@@ -1,0 +1,34 @@
+HYWOS 1.0.0 "Harmony of Stars"
+=============================
+
+Welcome to HYWOS, a 64-bit operating system written in Rust.
+
+This USB volume is your user home. Every setting, screenshot,
+application record and app-store key/value pair is written here,
+so it survives a reboot.
+
+Quick tour
+----------
+  F1   Launchpad
+  F2   Weather
+  F3   Settings / Permissions
+  F4   App Store
+  F5   About
+  F6   Files
+  F12  Screenshot (writes 24-bit BMP to /home/user/Screenshots)
+
+Terminal
+--------
+Click the Terminal icon in the dock, then try:
+  help
+  ls
+  cd Documents
+  cat welcome.txt
+  uname
+  date
+
+Software updates
+----------------
+Copy a .updpkg file to this volume, open Files, and double-click it.
+HYWOS validates the CONLYUPD header and CRC32 before writing the
+kernel region at LBA 64. User files are never touched.

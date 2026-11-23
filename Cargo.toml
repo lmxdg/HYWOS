@@ -1,0 +1,21 @@
+[package]
+name = "hywos"
+version = "1.0.0"
+edition = "2021"
+authors = ["HYWOS Project"]
+description = "HYWOS - a 64-bit UEFI operating system written in Rust"
+license = "MIT"
+
+[[bin]]
+name = "hywos"
+path = "src/main.rs"
+
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

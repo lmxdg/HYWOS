@@ -50,8 +50,8 @@ impl BootAnim {
     pub fn new(g: &Gfx) -> BootAnim {
         let cx = g.w as i32 / 2;
         let cy = g.h as i32 / 2 - 20;
-        let bg_top = rgb(7, 10, 26);
-        let bg_bot = rgb(2, 3, 8);
+        let bg_top = rgb(9, 13, 34);
+        let bg_bot = rgb(6, 5, 16);
         background(g, bg_top, bg_bot);
         let mut seed = 0x1234567u32;
         let mut stars = [Star {
@@ -148,7 +148,7 @@ impl BootAnim {
             let t2 = f as u32;
             if t2 > 30 {
                 let r = ((t2 - 30) * 7) as i32;
-                g.ring(self.cx, self.cy, r.min(300), 2, rgb(80, 200, 255), (140 - r / 3).max(10) as u8);
+                g.ring(self.cx, self.cy, r.min(300), 2, rgb(110, 190, 255), (140 - r / 3).max(10) as u8);
             }
         } else if f <= 58 {
             let t = (f - 46) as f32 / 12.0;
@@ -220,9 +220,9 @@ impl BootAnim {
             }
             if f >= 62 {
                 let sa = ((f - 62) * 14).min(255) as u8;
-                let st = "HARMONY OF STARS";
-                let sw = st.len() as i32 * 8 * 2;
-                g.text_a(self.cx - sw / 2, ty + 78, st, rgb(150, 210, 255), 2, sa);
+                let st = "星河 · 中文界面 · 64 位";
+                let sw = crate::gfx::text_width(st, 1);
+                g.text_a(self.cx - sw / 2, ty + 74, st, rgb(150, 210, 255), 1, sa);
             }
         }
 

@@ -57,25 +57,25 @@ impl AppId {
 
     pub fn name(self) -> &'static str {
         match self {
-            AppId::Terminal => "Terminal",
-            AppId::Files => "Files",
-            AppId::Settings => "Settings",
-            AppId::Store => "App Store",
-            AppId::About => "About",
-            AppId::Browser => "Browser",
-            AppId::Mail => "Mail",
-            AppId::Photos => "Photos",
-            AppId::Music => "Music",
-            AppId::Calendar => "Calendar",
-            AppId::Calculator => "Calculator",
-            AppId::Notes => "Notes",
-            AppId::Maps => "Maps",
-            AppId::Clock => "Clock",
-            AppId::Camera => "Camera",
-            AppId::Videos => "Videos",
-            AppId::Contacts => "Contacts",
-            AppId::Weather => "Weather",
-            AppId::Messages => "Messages",
+            AppId::Terminal => "终端",
+            AppId::Files => "文件",
+            AppId::Settings => "设置",
+            AppId::Store => "应用商店",
+            AppId::About => "关于本机",
+            AppId::Browser => "浏览器",
+            AppId::Mail => "邮件",
+            AppId::Photos => "照片",
+            AppId::Music => "音乐",
+            AppId::Calendar => "日历",
+            AppId::Calculator => "计算器",
+            AppId::Notes => "备忘录",
+            AppId::Maps => "地图",
+            AppId::Clock => "时钟",
+            AppId::Camera => "相机",
+            AppId::Videos => "视频",
+            AppId::Contacts => "通讯录",
+            AppId::Weather => "天气",
+            AppId::Messages => "信息",
         }
     }
 
@@ -105,25 +105,25 @@ impl AppId {
 
     pub fn colors(self) -> (u32, u32) {
         match self {
-            AppId::Terminal => (rgb(38, 44, 56), rgb(18, 22, 30)),
-            AppId::Files => (rgb(64, 156, 255), rgb(24, 98, 216)),
-            AppId::Settings => (rgb(122, 130, 148), rgb(62, 68, 84)),
-            AppId::Store => (rgb(64, 186, 255), rgb(18, 104, 214)),
-            AppId::About => (rgb(96, 116, 255), rgb(46, 58, 180)),
-            AppId::Browser => (rgb(78, 196, 246), rgb(20, 118, 196)),
-            AppId::Mail => (rgb(88, 168, 255), rgb(28, 92, 214)),
-            AppId::Photos => (rgb(255, 196, 84), rgb(236, 104, 96)),
-            AppId::Music => (rgb(255, 96, 132), rgb(196, 32, 92)),
-            AppId::Calendar => (rgb(255, 255, 255), rgb(240, 242, 248)),
-            AppId::Calculator => (rgb(92, 100, 118), rgb(40, 44, 56)),
-            AppId::Notes => (rgb(255, 222, 96), rgb(236, 180, 40)),
-            AppId::Maps => (rgb(108, 214, 160), rgb(34, 148, 108)),
-            AppId::Clock => (rgb(60, 66, 82), rgb(20, 24, 32)),
-            AppId::Camera => (rgb(108, 116, 132), rgb(48, 54, 66)),
-            AppId::Videos => (rgb(255, 140, 96), rgb(216, 72, 60)),
-            AppId::Contacts => (rgb(120, 196, 255), rgb(40, 108, 200)),
-            AppId::Weather => (rgb(112, 182, 255), rgb(38, 106, 208)),
-            AppId::Messages => (rgb(108, 232, 128), rgb(34, 168, 78)),
+            AppId::Terminal => (rgb(43, 47, 58), rgb(16, 18, 24)),
+            AppId::Files => (rgb(91, 168, 255), rgb(28, 104, 224)),
+            AppId::Settings => (rgb(136, 146, 166), rgb(70, 78, 96)),
+            AppId::Store => (rgb(57, 192, 255), rgb(10, 99, 216)),
+            AppId::About => (rgb(124, 108, 255), rgb(58, 46, 176)),
+            AppId::Browser => (rgb(79, 209, 240), rgb(18, 119, 200)),
+            AppId::Mail => (rgb(94, 168, 255), rgb(22, 86, 200)),
+            AppId::Photos => (rgb(255, 200, 74), rgb(232, 88, 110)),
+            AppId::Music => (rgb(255, 110, 158), rgb(180, 30, 106)),
+            AppId::Calendar => (rgb(255, 255, 255), rgb(232, 236, 246)),
+            AppId::Calculator => (rgb(90, 97, 114), rgb(42, 46, 58)),
+            AppId::Notes => (rgb(255, 224, 102), rgb(232, 185, 60)),
+            AppId::Maps => (rgb(110, 216, 166), rgb(30, 148, 104)),
+            AppId::Clock => (rgb(62, 68, 86), rgb(21, 24, 31)),
+            AppId::Camera => (rgb(108, 116, 134), rgb(44, 48, 58)),
+            AppId::Videos => (rgb(255, 138, 94), rgb(200, 64, 46)),
+            AppId::Contacts => (rgb(120, 196, 255), rgb(42, 108, 200)),
+            AppId::Weather => (rgb(111, 182, 255), rgb(37, 104, 200)),
+            AppId::Messages => (rgb(99, 224, 138), rgb(30, 158, 80)),
         }
     }
 }
@@ -501,10 +501,10 @@ unsafe fn build(app: AppId) {
     let cv = Canvas { p: hic.as_mut_ptr(), w: ICON_SRC, h: ICON_SRC };
     cv.clear();
     let (top, bot) = app.colors();
-    cv.round_rect(24, 24, 208, 208, 54, top, 255);
-    cv.vgrad(30, 30, 196, 196, top, bot);
-    cv.round_rect(24, 24, 208, 208, 54, top, 0);
-    cv.round_rect(24, 24, 208, 208, 54, 0, 0);
+    cv.round_rect(20, 20, 216, 216, 60, top, 255);
+    cv.vgrad(26, 26, 204, 204, top, bot);
+    cv.round_rect(20, 20, 216, 216, 60, top, 0);
+    cv.round_rect(20, 20, 216, 216, 60, 0, 0);
     draw_symbol(&cv, app);
     let cache = &mut *core::ptr::addr_of_mut!(ICON64);
     let out = &mut cache[app as usize];

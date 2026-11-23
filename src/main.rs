@@ -3,6 +3,8 @@
 
 mod anim;
 mod apps;
+mod cjk;
+mod logo;
 mod efi;
 mod font;
 mod fs;
@@ -23,7 +25,7 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
             return 1;
         }
         BS = (*ST).boot_services;
-        debug_print("HYWOS 1.0.0 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.0.1 (x86_64 UEFI, Rust no_std)");
         hw::firmware_vendor();
         debug_print("Firmware detected");
         bs_stall(60_000);
@@ -48,7 +50,7 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
             if boot.step(&g) {
                 break;
             }
-            bs_stall(12_000);
+            bs_stall(34_000);
         }
         debug_print("[stage] boot anim done");
 

@@ -1,7 +1,7 @@
 use crate::apps::{self, AppAction, AppState};
 use crate::efi::*;
 use crate::fs;
-use crate::gfx::{rgb, Gfx};
+use crate::gfx::{rgb, text_width, Gfx};
 use crate::hw;
 use crate::icon::{icon, AppId};
 
@@ -134,18 +134,29 @@ impl Ui {
         let g = &self.g;
         let w = self.w();
         let h = self.h();
-        g.vgrad(0, 0, w, h, rgb(11, 16, 34), rgb(3, 4, 10));
-        g.circle(w * 3 / 4, h / 3, 340, rgb(38, 92, 180), 30);
-        g.circle(w / 4, h * 2 / 3, 300, rgb(96, 44, 150), 22);
-        g.circle(w * 2 / 3, h * 3 / 4, 380, rgb(20, 48, 104), 14);
+        g.vgrad(0, 0, w, h, rgb(9, 13, 30), rgb(6, 5, 14));
+        g.circle(w * 3 / 4, h / 4, 360, rgb(44, 96, 190), 34);
+        g.circle(w / 5, h * 3 / 4, 320, rgb(138, 60, 150), 24);
+        g.circle(w * 2 / 3, h * 2 / 3, 400, rgb(26, 54, 120), 16);
+        let mut seed = 0x2545f491u32;
+        let mut i = 0;
+        while i < 110 {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let x = (seed % w as u32) as i32;
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let y = (seed % (h as u32 / 2)) as i32;
+            let b = ((seed >> 8) % 60) as u8 + 90;
+            g.put(x, y, rgb(b, b, (b as u32 + 40).min(255) as u8), 120);
+            i += 1;
+        }
         let mut x = 0;
         while x < w {
-            g.rect(x, 0, 1, h, rgb(255, 255, 255), 4);
+            g.rect(x, 0, 1, h, rgb(255, 255, 255), 3);
             x += 64;
         }
         let mut y = 0;
         while y < h {
-            g.rect(0, y, w, 1, rgb(255, 255, 255), 3);
+            g.rect(0, y, w, 1, rgb(255, 255, 255), 2);
             y += 64;
         }
     }
@@ -202,11 +213,10 @@ impl Ui {
 
     fn dock_geom(&self) -> (i32, i32, i32, i32, i32, i32) {
         let w = self.w();
-        let n = 19;
-        let (iw, gap) = if w >= 1040 { (48, 4) } else if w >= 900 { (42, 3) } else { (34, 3) };
-        let dw = n * iw + (n - 1) * gap + 20;
+        let (iw, gap) = if w >= 1040 { (46, 5) } else if w >= 900 { (42, 5) } else { (34, 5) };
+        let dw = 19 * iw + 18 * gap + 28;
         let dx = (w - dw) / 2;
-        let dh = iw + 14;
+        let dh = iw + 22;
         let dy = self.h() - dh - 10;
         (dx, dy, dw, dh, iw, gap)
     }
@@ -223,18 +233,19 @@ impl Ui {
     unsafe fn draw_dock(&self) {
         let g = &self.g;
         let (dx, dy, dw, dh, iw, gap) = self.dock_geom();
-        g.round_rect(dx - 6, dy - 4, dw + 12, dh + 8, 24, 0x000000, 70);
-        g.round_rect(dx, dy, dw, dh, 20, rgb(18, 22, 34), 210);
-        g.round_rect(dx, dy, dw, 1, 0, rgb(255, 255, 255), 40);
+        g.round_rect(dx - 8, dy - 6, dw + 16, dh + 12, 28, 0x000000, 76);
+        g.round_rect(dx, dy, dw, dh, 24, rgb(15, 18, 30), 214);
+        g.round_rect(dx, dy, dw, 1, 0, rgb(255, 255, 255), 46);
+        g.round_rect(dx + 1, dy + 1, dw - 2, dh / 2, 22, rgb(255, 255, 255), 10);
         let mut i = 0;
         while i < 19 {
-            let ix = dx + 10 + i * (iw + gap);
+            let ix = dx + 14 + i * (iw + gap);
             let iy = dy + (dh - iw) / 2;
             if i < 18 {
                 let ic = icon(DOCK_APPS[i as usize]);
                 if self.hover == i as i32 {
-                    g.round_rect(ix - 3, iy - 3, iw + 6, iw + 6, 12, rgb(255, 255, 255), 40);
-                    g.blit_rgba(ix - 2, iy - 2, iw + 4, iw + 4, ic, 64, 64);
+                    g.round_rect(ix - 4, iy - 4, iw + 8, iw + 8, 13, rgb(255, 255, 255), 44);
+                    g.blit_rgba(ix - 3, iy - 3, iw + 6, iw + 6, ic, 64, 64);
                 } else {
                     g.blit_rgba(ix, iy, iw, iw, ic, 64, 64);
                 }
@@ -242,15 +253,15 @@ impl Ui {
                 let cx = ix + iw / 2;
                 let cy = iy + iw / 2;
                 if self.hover == 18 {
-                    g.round_rect(ix - 3, iy - 3, iw + 6, iw + 6, 12, rgb(255, 255, 255), 40);
+                    g.round_rect(ix - 4, iy - 4, iw + 8, iw + 8, 13, rgb(255, 255, 255), 44);
                 }
-                g.round_rect(ix, iy, iw, iw, 10, rgb(28, 34, 50), 240);
-                let unit = iw / 6;
+                g.round_rect(ix, iy, iw, iw, 11, rgb(30, 36, 54), 245);
+                let unit = iw / 5;
                 let mut r = 0;
                 while r < 3 {
                     let mut c = 0;
                     while c < 3 {
-                        g.circle(cx - unit + c * unit, cy - unit + r * unit, 2, rgb(220, 232, 255), 230);
+                        g.circle(cx - unit + c * unit, cy - unit + r * unit, 2, rgb(224, 234, 255), 235);
                         c += 1;
                     }
                     r += 1;
@@ -259,34 +270,31 @@ impl Ui {
             i += 1;
         }
         if self.hover >= 0 && self.hover < 19 {
-            let label = if self.hover == 18 { "Launchpad" } else { DOCK_APPS[self.hover as usize].name() };
-            let lw = label.len() as i32 * 8 + 20;
-            let lx = dx + 10 + self.hover * (iw + gap) + iw / 2 - lw / 2;
-            g.round_rect(lx, dy - 30, lw, 22, 8, 0x000000, 160);
-            g.text_center(lx + lw / 2, dy - 26, label, rgb(240, 246, 255), 1);
+            let label = if self.hover == 18 { "启动台" } else { DOCK_APPS[self.hover as usize].name() };
+            let lw = text_width(label, 1) + 22;
+            let lx = dx + 14 + self.hover * (iw + gap) + iw / 2 - lw / 2;
+            g.round_rect(lx, dy - 32, lw, 24, 9, rgb(8, 10, 18), 180);
+            g.text_center(lx + lw / 2, dy - 27, label, rgb(240, 246, 255), 1);
         }
     }
 
     unsafe fn draw_status(&self) {
         let g = &self.g;
         let w = self.w();
-        g.rect(0, 0, w, 26, rgb(10, 13, 24), 190);
-        g.rect(0, 26, w, 1, rgb(255, 255, 255), 16);
-        g.circle(16, 13, 6, rgb(110, 200, 255), 255);
-        g.text(28, 5, "HYWOS", rgb(232, 242, 255), 1);
+        g.rect(0, 0, w, 30, rgb(9, 12, 24), 205);
+        g.rect(0, 30, w, 1, rgb(255, 255, 255), 16);
+        g.circle(18, 15, 7, rgb(110, 200, 255), 255);
+        g.circle(18, 15, 3, rgb(230, 246, 255), 255);
+        g.text(32, 7, "HYWOS 1.0.1", rgb(232, 242, 255), 1);
+        g.text(32 + text_width("HYWOS 1.0.1", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
         let c = hw::cpu();
-        let mut b = [0u8; 48];
+        let mut b = [0u8; 64];
         let mut l = 0;
-        for ch in b"SMP ".iter() { b[l] = *ch; l += 1; }
         l += hw::num2(&mut b[l..], c.enabled as u32, 1);
-        for ch in b"/".iter() { b[l] = *ch; l += 1; }
-        l += hw::num2(&mut b[l..], c.total as u32, 1);
-        for ch in b" cores".iter() { b[l] = *ch; l += 1; }
-        g.text(96, 5, core::str::from_utf8_unchecked(&b[..l]), rgb(160, 190, 226), 1);
+        for ch in " 核".as_bytes().iter() { b[l] = *ch; l += 1; }
+        g.text(w - 352, 7, core::str::from_utf8_unchecked(&b[..l]), rgb(150, 180, 214), 1);
         let net = hw::net();
-        let nx = w - 390;
         if net.present {
-            g.ring(nx + 8, 13, 7, 2, rgb(120, 220, 180), 220);
             let mut mb = [0u8; 40];
             let mut ml = 0;
             let mut i = 0;
@@ -298,9 +306,10 @@ impl Ui {
                 if i < 5 { mb[ml] = b':'; ml += 1; }
                 i += 1;
             }
-            g.text(nx + 20, 5, core::str::from_utf8_unchecked(&mb[..ml]), rgb(140, 170, 200), 1);
+            g.ring(w - 296, 15, 7, 2, rgb(120, 220, 180), 220);
+            g.text(w - 280, 7, core::str::from_utf8_unchecked(&mb[..ml]), rgb(138, 168, 200), 1);
         } else {
-            g.text(nx, 5, "NET  no adapter", rgb(150, 130, 140), 1);
+            g.text(w - 300, 7, "网络：未发现网卡", rgb(150, 132, 142), 1);
         }
         let mut tb = [0u8; 16];
         let mut tl = 0;
@@ -318,14 +327,14 @@ impl Ui {
                 for ch in b"--:--".iter() { tb[tl] = *ch; tl += 1; }
             }
         }
-        g.text(w - 140, 5, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
-        g.round_rect(w - 60, 8, 22, 11, 3, rgb(120, 160, 200), 200);
-        g.rect(w - 37, 11, 2, 5, rgb(120, 160, 200), 200);
-        g.rect(w - 58, 10, 14, 7, rgb(110, 220, 150), 240);
+        g.text(w - 112, 7, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
+        g.round_rect(w - 64, 10, 22, 11, 3, rgb(120, 160, 200), 200);
+        g.rect(w - 41, 13, 2, 5, rgb(120, 160, 200), 200);
+        g.rect(w - 62, 12, 14, 7, rgb(110, 220, 150), 240);
         let msg = &*core::ptr::addr_of!(SHOT_MSG);
         let ml = SHOT_MSG_LEN;
         if ml > 0 {
-            g.text(250, 5, core::str::from_utf8_unchecked(&msg[..ml]), rgb(140, 230, 170), 1);
+            g.text(250, 7, core::str::from_utf8_unchecked(&msg[..ml]), rgb(140, 230, 170), 1);
         }
     }
 
@@ -403,12 +412,13 @@ impl Ui {
     unsafe fn draw_launchpad(&self) {
         let g = &self.g;
         let t = self.lp_t;
-        let dim = if t < 16 { (t * 11) as u8 } else { 176 };
+        let dim = if t < 16 { (t * 13) as u8 } else { 208 };
         g.dim(dim);
+        g.text_center(self.w() / 2, 46, "全部应用", rgb(236, 244, 255), 2);
         let (apps, n) = self.filtered();
         let cols = 6usize;
         let iw = 108i32;
-        let ih = 118i32;
+        let ih = 100i32;
         let gx = (self.w() - cols as i32 * iw) / 2;
         let gy = 94;
         let mut i = 0;
@@ -427,31 +437,33 @@ impl Ui {
             let draw_w = if t >= 16 { 64 } else { sz };
             g.blit_rgba(cx - draw_w / 2, cy + (64 - draw_w) / 2, draw_w, draw_w, ic, 64, 64);
             if t > 6 + delay {
-                g.text_a(cx - (app.name().len() as i32 * 4), cy + 70, app.name(), rgb(240, 246, 255), 1, alpha.min(220));
+                let nw = text_width(app.name(), 1);
+                g.text_a(cx - nw / 2, cy + 70, app.name(), rgb(240, 246, 255), 1, alpha.min(220));
             }
             i += 1;
         }
         let sw = 430;
         let sx = (self.w() - sw) / 2;
         let sy = self.h() - 98;
-        g.round_rect(sx, sy, sw, 40, 20, rgb(20, 26, 42), 220);
-        g.round_rect_outline(sx, sy, sw, 40, 20, rgb(255, 255, 255), 40);
-        g.ring(sx + 22, sy + 20, 8, 2, rgb(180, 200, 226), 200);
-        g.line(sx + 28, sy + 26, sx + 34, sy + 32, rgb(180, 200, 226), 200);
+        g.round_rect(sx, sy, sw, 42, 21, rgb(18, 24, 40), 226);
+        g.round_rect_outline(sx, sy, sw, 42, 21, rgb(255, 255, 255), 46);
+        g.ring(sx + 24, sy + 21, 8, 2, rgb(180, 200, 226), 200);
+        g.line(sx + 30, sy + 27, sx + 36, sy + 33, rgb(180, 200, 226), 200);
         if self.search_len > 0 {
             let s = core::str::from_utf8_unchecked(&self.search[..self.search_len]);
-            g.text(sx + 44, sy + 12, s, rgb(236, 244, 255), 1);
+            g.text(sx + 46, sy + 13, s, rgb(236, 244, 255), 1);
         } else {
-            g.text(sx + 44, sy + 12, "Search apps", rgb(140, 156, 180), 1);
+            g.text(sx + 46, sy + 13, "搜索应用", rgb(140, 156, 180), 1);
         }
         if (self.frame / 18) % 2 == 0 {
-            let cx = sx + 44 + self.search_len as i32 * 8;
-            g.rect(cx, sy + 12, 6, 15, rgb(160, 200, 255), 200);
+            let q = core::str::from_utf8_unchecked(&self.search[..self.search_len]);
+            let cx = sx + 46 + text_width(q, 1);
+            g.rect(cx, sy + 13, 6, 15, rgb(160, 200, 255), 200);
         }
         if n == 0 {
-            g.text_center(self.w() / 2, sy - 40, "No apps match your search", rgb(200, 212, 232), 1);
+            g.text_center(self.w() / 2, sy - 44, "没有匹配的应用", rgb(200, 212, 232), 1);
         }
-        g.text_center(self.w() / 2, sy + 50, "Press Esc to close  -  Enter launches the first match", rgb(150, 168, 196), 1);
+        g.text_center(self.w() / 2, sy + 54, "按 Esc 关闭 · 回车启动第一个结果", rgb(150, 168, 196), 1);
     }
 
     unsafe fn open_app(&mut self, id: AppId) {

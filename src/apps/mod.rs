@@ -4,7 +4,7 @@ use crate::gfx::*;
 use crate::hw;
 use crate::icon::{icon, AppId};
 
-pub const HEADER_H: i32 = 34;
+pub const HEADER_H: i32 = 40;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
@@ -32,8 +32,8 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS Shell 1.0.0 (x86_64 UEFI)");
-        self.print("Type 'help' for a list of commands.");
+        self.print("HYWOS 终端 1.0.1 (x86_64 UEFI)");
+        self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
 
@@ -86,22 +86,22 @@ impl Terminal {
         let cwd = cwd_owned.as_str();
         match args[0] {
             "help" => {
-                self.print("help      - show this help");
-                self.print("ls [dir]  - list directory");
-                self.print("cd <dir>  - change directory");
-                self.print("pwd       - print working directory");
-                self.print("cat <f>   - print file");
-                self.print("echo <s>  - print text");
-                self.print("mkdir <d> - create directory");
-                self.print("rm <f>    - delete file");
-                self.print("cp a b    - copy file");
-                self.print("mv a b    - move file");
-                self.print("df / mount- filesystem info");
-                self.print("uname/date/ps/uptime/whoami");
-                self.print("weather   - weather summary");
-                self.print("screenshot- capture the screen");
-                self.print("clear     - clear the terminal");
-                self.print("exit      - close terminal window");
+                self.print("help        显示本帮助");
+                self.print("ls [目录]   列出目录内容");
+                self.print("cd <目录>   切换目录");
+                self.print("pwd         显示当前路径");
+                self.print("cat <文件>  查看文件");
+                self.print("echo <文本> 输出文本");
+                self.print("mkdir <目录> 新建目录");
+                self.print("rm <文件>   删除文件");
+                self.print("cp a b      复制文件");
+                self.print("mv a b      移动文件");
+                self.print("df / mount  文件系统信息");
+                self.print("uname date ps uptime whoami");
+                self.print("weather     天气摘要");
+                self.print("screenshot  截取屏幕");
+                self.print("clear       清屏");
+                self.print("exit        关闭终端窗口");
             }
             "clear" => { self.n = 0; }
             "pwd" => { let s = Str80::empty(); let _ = s; self.print(cwd); }
@@ -109,7 +109,7 @@ impl Terminal {
                 let target = if na > 1 { path_join(cwd, args[1]) } else { let mut s = Str80::empty(); s.push_str(cwd); s };
                 let mut ents: [DirEntry; 32] = core::mem::zeroed();
                 let n = list_dir(usr_vol(), target.as_str(), &mut ents);
-                if n == 0 { self.print("(empty or not found)"); }
+                if n == 0 { self.print("（空目录或不存在）"); }
                 let mut k = 0;
                 while k < n {
                     let e = &ents[k];
@@ -136,13 +136,13 @@ impl Terminal {
                 let mut ents: [DirEntry; 32] = core::mem::zeroed();
                 let n = list_dir(usr_vol(), target.as_str(), &mut ents);
                 if n == 0 && !exists_vol(usr_vol(), target.as_str()) {
-                    self.print("cd: no such directory");
+                    self.print("cd：目录不存在");
                 } else {
                     self.cwd = target;
                 }
             }
             "cat" => {
-                if na < 2 { self.print("cat: missing file"); return AppAction::None; }
+                if na < 2 { self.print("cat：缺少文件名"); return AppAction::None; }
                 let p = path_join(cwd, args[1]);
                 match read_file(usr_vol(), p.as_str()) {
                     Some(n) => {
@@ -170,20 +170,20 @@ impl Terminal {
                 self.print(core::str::from_utf8_unchecked(&buf[..l]));
             }
             "mkdir" => {
-                if na < 2 { self.print("mkdir: missing name"); } else {
+                if na < 2 { self.print("mkdir：缺少目录名"); } else {
                     let p = path_join(cwd, args[1]);
                     ensure_dir(usr_vol(), p.as_str());
-                    self.print("created directory");
+                    self.print("已创建目录");
                 }
             }
             "rm" => {
-                if na < 2 { self.print("rm: missing file"); } else {
+                if na < 2 { self.print("rm：缺少文件名"); } else {
                     let p = path_join(cwd, args[1]);
-                    if delete_file(usr_vol(), p.as_str()) { self.print("removed"); } else { self.print("rm: failed"); }
+                    if delete_file(usr_vol(), p.as_str()) { self.print("已删除"); } else { self.print("rm：删除失败"); }
                 }
             }
             "cp" | "mv" => {
-                if na < 3 { self.print("usage: cp <src> <dst>"); } else {
+                if na < 3 { self.print("用法：cp <源> <目标>"); } else {
                     let a = path_join(cwd, args[1]);
                     let bb = path_join(cwd, args[2]);
                     match read_file(usr_vol(), a.as_str()) {
@@ -195,8 +195,8 @@ impl Terminal {
                             while k < l { tmp[k] = buf[k]; k += 1; }
                             if write_file(usr_vol(), bb.as_str(), &tmp[..l]) {
                                 if args[0] == "mv" { delete_file(usr_vol(), a.as_str()); }
-                                self.print("done");
-                            } else { self.print("write failed"); }
+                                self.print("完成");
+                            } else { self.print("写入失败"); }
                         }
                         None => self.print("cannot read source"),
                     }
@@ -210,8 +210,8 @@ impl Terminal {
                 self.print("    3     2  run    shell");
             }
             "free" => {
-                self.print("Memory is managed by UEFI firmware pools.");
-                self.print("Use the UEFI memory map for exact figures.");
+                self.print("内存由 UEFI 固件池管理。");
+                self.print("精确数值请参阅 UEFI 内存映射。");
             }
             "date" => {
                 match hw::get_time() {
@@ -236,15 +236,15 @@ impl Terminal {
                 let mut b = [0u8; 32];
                 let mut l = 0;
                 l += hw::num2(&mut b[l..], usr_vol() as u32, 1);
-                self.print("volume  mounted  fs");
-                self.print("HYWOS user volume is on a FAT filesystem.");
+                self.print("卷      挂载    文件系统");
+                self.print("用户卷为 FAT 文件系统。");
                 let _ = b;
             }
             "mount" => {
-                self.print("UEFI Simple File System volumes:");
+                self.print("UEFI 简单文件系统卷：");
                 let mut k = 0;
                 while k < vol_count() {
-                    self.print("  volume mounted at SimpleFS#");
+                    self.print("  卷已挂载 #");
                     k += 1;
                 }
             }
@@ -253,16 +253,16 @@ impl Terminal {
             "weather" => self.print("Weather app: 5-day offline forecast, C/F toggle."),
             "screenshot" => return AppAction::Screenshot,
             "appstore" => {
-                self.print("appstore get <app> <key>");
-                self.print("appstore set <app> <key> <value>");
-                self.print("appstore del <app> <key>");
+                self.print("appstore get <应用> <键>");
+                self.print("appstore set <应用> <键> <值>");
+                self.print("appstore del <应用> <键>");
             }
             "exit" => return AppAction::Close,
             _ => {
                 let mut b = [0u8; 92];
                 let mut l = 0;
                 for c in args[0].bytes() { if l < 70 { b[l] = c; l += 1; } }
-                let tail = ": command not found";
+                let tail = "：命令未找到";
                 for c in tail.bytes() { if l < 90 { b[l] = c; l += 1; } }
                 self.print(core::str::from_utf8_unchecked(&b[..l]));
             }
@@ -327,8 +327,8 @@ pub struct Forecast {
     pub cond: u8,
 }
 
-pub const CITIES: [&str; 5] = ["Beijing", "Shanghai", "Shenzhen", "Chengdu", "Harbin"];
-pub const DAY_NAMES: [&str; 5] = ["TODAY", "TOMORROW", "WED", "THU", "FRI"];
+pub const CITIES: [&str; 5] = ["北京", "上海", "深圳", "成都", "哈尔滨"];
+pub const DAY_NAMES: [&str; 5] = ["今天", "明天", "周三", "周四", "周五"];
 
 pub static FORECAST: [[Forecast; 5]; 5] = [
     [
@@ -377,12 +377,12 @@ pub struct Store {
 }
 
 pub const STORE_APPS: [(&str, &str, AppId, &str); 6] = [
-    ("weather", "Weather", AppId::Weather, "Offline 5-day forecast with C/F units"),
-    ("notes", "Notes", AppId::Notes, "Quick notes stored in your home volume"),
-    ("calculator", "Calculator", AppId::Calculator, "A crisp calculator for daily math"),
-    ("photos", "Photos", AppId::Photos, "Browse your Pictures folder"),
-    ("music", "Music", AppId::Music, "Local audio player shell"),
-    ("maps", "Maps", AppId::Maps, "Offline map canvas"),
+    ("weather", "天气", AppId::Weather, "离线 5 日天气"),
+    ("notes", "备忘录", AppId::Notes, "随手记录"),
+    ("calculator", "计算器", AppId::Calculator, "日常计算"),
+    ("photos", "照片", AppId::Photos, "浏览图片"),
+    ("music", "音乐", AppId::Music, "本地音乐"),
+    ("maps", "地图", AppId::Maps, "离线地图"),
 ];
 
 pub struct AppState {
@@ -443,33 +443,39 @@ pub fn app_size(id: AppId) -> (i32, i32) {
 }
 
 fn shadow(g: &Gfx, x: i32, y: i32, w: i32, h: i32, r: i32) {
-    let mut i = 7;
+    let mut i = 9;
     while i > 0 {
-        let a = (i * 5) as u8;
-        g.round_rect_outline(x - i, y - i + 3, w + i * 2, h + i * 2, r + i, 0x000000, a);
+        let a = (i * 4 + 4) as u8;
+        g.round_rect_outline(x - i, y - i + 5, w + i * 2, h + i * 2, r + i, rgb(4, 6, 14), a);
         i -= 1;
     }
-    g.rect(x + 6, y + h, w - 12, 2, 0x000000, 40);
+    g.round_rect(x - 3, y + h, w + 6, 8, 4, 0x000000, 30);
 }
 
 fn card(g: &Gfx, x: i32, y: i32, w: i32, h: i32, r: i32) {
     shadow(g, x, y, w, h, r);
-    g.round_rect(x, y, w, h, r, rgb(250, 251, 254), 255);
-    g.round_rect(x, y, w, 1, 0, rgb(255, 255, 255), 255);
+    g.round_rect(x, y, w, h, r, rgb(246, 248, 253), 255);
+    g.round_rect(x + 1, y + 1, w - 2, h - 2, r - 1, rgb(252, 253, 255), 255);
 }
 
 fn btn(g: &Gfx, x: i32, y: i32, w: i32, h: i32, label: &str, primary: bool) {
-    let c = if primary { rgb(46, 120, 240) } else { rgb(228, 232, 240) };
-    let tc = if primary { rgb(255, 255, 255) } else { rgb(48, 54, 68) };
-    g.round_rect(x, y, w, h, h / 2, c, 255);
-    g.text_center(x + w / 2, y + (h - 16) / 2, label, tc, 1);
+    if primary {
+        g.round_rect(x, y, w, h, h / 2, rgb(60, 116, 240), 255);
+        g.round_rect(x, y, w, h * 2 / 3, h / 2, rgb(116, 164, 255), 70);
+        g.round_rect(x, y, w, h, h / 2, rgb(255, 255, 255), 0);
+        g.text_center(x + w / 2, y + (h - 16) / 2, label, rgb(255, 255, 255), 1);
+    } else {
+        g.round_rect(x, y, w, h, h / 2, rgb(230, 234, 244), 255);
+        g.text_center(x + w / 2, y + (h - 16) / 2, label, rgb(58, 64, 82), 1);
+    }
 }
 
 fn toggle(g: &Gfx, x: i32, y: i32, on: bool) {
-    let c = if on { rgb(48, 190, 110) } else { rgb(198, 204, 214) };
-    g.round_rect(x, y, 40, 22, 11, c, 255);
-    let knob = if on { x + 20 } else { x + 2 };
-    g.circle(knob + 9, y + 11, 9, rgb(255, 255, 255), 255);
+    let c = if on { rgb(48, 196, 118) } else { rgb(204, 210, 222) };
+    g.round_rect(x, y + 1, 42, 24, 12, rgb(0, 0, 0), 22);
+    g.round_rect(x, y, 42, 24, 12, c, 255);
+    let kx = if on { x + 20 } else { x + 2 };
+    g.circle(kx + 10, y + 12, 10, rgb(255, 255, 255), 255);
 }
 
 fn fmt_temp(v: i32, f: bool, buf: &mut [u8]) -> usize {
@@ -509,16 +515,23 @@ fn sun_cloud(g: &Gfx, cx: i32, cy: i32, s: i32, frame: u32, cond: u8) {
 }
 
 pub unsafe fn draw(st: &mut AppState, id: AppId, g: &Gfx, x: i32, y: i32, w: i32, h: i32, focus: bool) {
-    card(g, x, y, w, h, 14);
-    let title_c = if focus { rgb(236, 240, 248) } else { rgb(228, 231, 238) };
-    g.round_rect(x, y, w, HEADER_H, 14, title_c, 255);
-    g.rect(x, y + HEADER_H - 12, w, 12, title_c, 255);
+    card(g, x, y, w, h, 18);
+    let th = HEADER_H;
+    g.round_rect(x, y, w, th, 18, rgb(238, 242, 251), 255);
+    g.rect(x, y + th - 14, w, 14, rgb(238, 242, 251), 255);
+    g.rect(x + 1, y + th - 2, w - 2, 1, rgb(210, 218, 232), 220);
     if focus {
-        g.circle(x + 18, y + HEADER_H / 2, 6, rgb(255, 96, 86), 255);
-        g.circle(x + 36, y + HEADER_H / 2, 6, rgb(250, 196, 84), 255);
-        g.circle(x + 54, y + HEADER_H / 2, 6, rgb(82, 200, 112), 255);
+        g.circle(x + 20, y + 20, 7, rgb(255, 95, 86), 255);
+        g.circle(x + 42, y + 20, 7, rgb(255, 189, 46), 255);
+        g.circle(x + 64, y + 20, 7, rgb(39, 201, 63), 255);
+    } else {
+        g.circle(x + 20, y + 20, 6, rgb(198, 204, 216), 255);
+        g.circle(x + 42, y + 20, 6, rgb(206, 212, 224), 255);
+        g.circle(x + 64, y + 20, 6, rgb(214, 220, 232), 255);
     }
-    g.text_center(x + w / 2, y + 9, id.name(), rgb(52, 58, 72), 1);
+    g.text_center(x + w / 2, y + 13, id.name(), rgb(44, 50, 66), 1);
+    g.rect(x + w - 96, y + 8, 1, th - 16, rgb(210, 218, 232), 160);
+    g.circle(x + w - 30, y + 20, 5, rgb(190, 198, 212), 200);
     st.tick += 1;
     match id {
         AppId::Terminal => draw_term(&mut st.term, g, x, y, w, h),
@@ -536,25 +549,29 @@ fn draw_term(t: &mut Terminal, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let iy = y + HEADER_H + 8;
     let iw = w - 24;
     let ih = h - HEADER_H - 20;
-    g.round_rect(ix, iy, iw, ih, 8, rgb(16, 20, 28), 255);
-    let rows = (ih - 34) / 16;
+    g.round_rect(ix, iy, iw, ih, 12, rgb(11, 15, 22), 255);
+    g.round_rect_outline(ix, iy, iw, ih, 12, rgb(255, 255, 255), 18);
+    g.text(ix + 14, iy + 8, "HYWOS 终端 · UTF-8 中文", rgb(94, 180, 218), 1);
+    g.rect(ix + 14, iy + 28, iw - 28, 1, rgb(255, 255, 255), 16);
+    let top = iy + 40;
+    let rows = (ih - 76) / 16;
     let start = if t.n as i32 > rows { t.n as i32 - rows } else { 0 };
     let mut i = start as usize;
     let mut row = 0;
     while i < t.n {
         let s = t.line_str(i);
-        let col = if s.starts_with("user@hywos") { rgb(120, 220, 160) } else { rgb(200, 214, 236) };
-        g.text(ix + 10, iy + 10 + row * 16, s, col, 1);
+        let col = if s.starts_with("user@hywos") { rgb(104, 216, 160) } else { rgb(204, 218, 240) };
+        g.text(ix + 14, top + row * 16, s, col, 1);
         row += 1;
         i += 1;
     }
-    let py = iy + ih - 24;
-    g.text(ix + 10, py, t.prompt(), rgb(120, 220, 160), 1);
-    let px = ix + 10 + t.prompt().len() as i32 * 8 + 8;
+    let py = iy + ih - 26;
+    g.text(ix + 14, py, t.prompt(), rgb(104, 216, 160), 1);
+    let px = ix + 14 + text_width(t.prompt(), 1) + 8;
     let input = unsafe { core::str::from_utf8_unchecked(&t.input[..t.ilen]) };
     g.text(px, py, input, rgb(240, 246, 255), 1);
     if (t.tick_blink() / 20) % 2 == 0 {
-        g.rect(px + input.len() as i32 * 8, py, 7, 15, rgb(160, 210, 255), 200);
+        g.rect(px + text_width(input, 1), py, 7, 15, rgb(150, 210, 255), 200);
     }
 }
 
@@ -568,191 +585,195 @@ pub static mut TICK: u32 = 0;
 
 fn draw_files(st: &mut AppState, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let top = y + HEADER_H + 8;
-    let side = 168;
-    g.round_rect(x + 10, top, side, h - HEADER_H - 24, 8, rgb(238, 241, 247), 255);
-    let places = ["Home", "Documents", "Pictures", "Screenshots", "App Data"];
+    let side = 176;
+    g.round_rect(x + 10, top, side, h - HEADER_H - 24, 12, rgb(235, 240, 249), 255);
+    let places = ["主目录", "文档", "图片", "截图", "应用数据"];
     let mut i = 0;
     while i < 5 {
-        let py = top + 14 + i as i32 * 30;
+        let py = top + 14 + i as i32 * 32;
         if i == st.files_sel.min(4) {
-            g.round_rect(x + 18, py - 6, side - 16, 26, 6, rgb(214, 226, 248), 255);
+            g.round_rect(x + 18, py - 7, side - 16, 28, 8, rgb(206, 222, 250), 255);
+            g.rect(x + 18, py - 5, 3, 24, rgb(60, 116, 240), 255);
         }
-        g.text(x + 28, py, places[i], rgb(56, 64, 84), 1);
+        g.text(x + 30, py, places[i], rgb(54, 62, 82), 1);
         i += 1;
     }
-    let lx = x + side + 24;
-    let lw = w - side - 40;
+    let lx = x + side + 26;
+    let lw = w - side - 44;
     let mut ents: [DirEntry; 32] = unsafe { core::mem::zeroed() };
     let n = unsafe { list_dir(usr_vol(), st.files_cwd.as_str(), &mut ents) };
-    g.text(lx, top + 2, st.files_cwd.as_str(), rgb(120, 128, 146), 1);
+    g.round_rect(lx - 8, top - 2, lw + 12, 26, 8, rgb(232, 238, 248), 200);
+    g.text(lx, top + 4, st.files_cwd.as_str(), rgb(96, 106, 128), 1);
     let mut k = 0;
-    while k < n && k < 13 {
-        let ey = top + 26 + k as i32 * 26;
+    while k < n && k < 12 {
+        let ey = top + 34 + k as i32 * 28;
         if k == st.files_click {
-            g.round_rect(lx - 6, ey - 5, lw, 24, 5, rgb(222, 232, 250), 255);
+            g.round_rect(lx - 8, ey - 6, lw + 12, 26, 8, rgb(214, 228, 252), 255);
         }
         let name = ents[k].name.as_str();
         if ents[k].is_dir {
-            g.round_rect(lx, ey, 14, 11, 3, rgb(250, 196, 84), 255);
-            g.text(lx + 22, ey, name, rgb(48, 56, 76), 1);
+            g.round_rect(lx, ey, 16, 12, 3, rgb(248, 194, 82), 255);
+            g.rect(lx, ey + 2, 7, 3, rgb(248, 194, 82), 255);
+            g.text(lx + 24, ey - 2, name, rgb(46, 54, 74), 1);
         } else {
-            g.round_rect(lx, ey, 11, 14, 2, rgb(150, 170, 200), 255);
-            let col = if name.ends_with(".updpkg") { rgb(196, 72, 66) } else { rgb(72, 82, 102) };
-            g.text(lx + 22, ey, name, col, 1);
+            g.round_rect(lx, ey - 2, 12, 15, 3, rgb(150, 170, 202), 255);
+            let col = if name.ends_with(".updpkg") { rgb(200, 76, 70) } else { rgb(70, 80, 100) };
+            g.text(lx + 24, ey - 2, name, col, 1);
         }
         k += 1;
     }
     if n == 0 {
-        g.text(lx, top + 26, "(empty)", rgb(150, 158, 176), 1);
+        g.text(lx, top + 40, "（空目录）", rgb(150, 158, 176), 1);
     }
-    g.text(lx, y + h - 24, "Double-click a .updpkg to open Software Update", rgb(140, 148, 168), 1);
+    g.text(lx, y + h - 26, "双击 .updpkg 可打开软件更新", rgb(136, 146, 168), 1);
 }
 
-fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
+unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let top = y + HEADER_H + 8;
     let side = 190;
-    g.round_rect(x + 10, top, side, h - HEADER_H - 24, 8, rgb(238, 241, 247), 255);
-    let pages = ["Display", "Permissions", "Software Update", "About"];
+    g.round_rect(x + 10, top, side, h - HEADER_H - 24, 12, rgb(235, 240, 249), 255);
+    let pages = ["显示", "权限", "软件更新", "关于本机"];
     let mut i = 0;
     while i < 4 {
-        let py = top + 12 + i as i32 * 34;
+        let py = top + 12 + i as i32 * 36;
         if s.page == i {
-            g.round_rect(x + 18, py - 7, side - 16, 30, 7, rgb(214, 226, 248), 255);
-            g.text(x + 30, py, pages[i], rgb(36, 92, 200), 1);
+            g.round_rect(x + 18, py - 8, side - 16, 32, 9, rgb(206, 222, 250), 255);
+            g.rect(x + 18, py - 6, 3, 28, rgb(60, 116, 240), 255);
+            g.text(x + 32, py, pages[i], rgb(34, 88, 196), 1);
         } else {
-            g.text(x + 30, py, pages[i], rgb(62, 70, 90), 1);
+            g.text(x + 32, py, pages[i], rgb(62, 70, 90), 1);
         }
         i += 1;
     }
     let cx = x + side + 26;
     let cy = top + 6;
-    let cw = w - side - 40;
     match s.page {
         0 => {
-            g.text(cx, cy, "Display", rgb(40, 46, 60), 2);
-            g.text(cx, cy + 42, "Resolution", rgb(130, 138, 156), 1);
+            g.text(cx, cy, "显示设置", rgb(36, 42, 58), 2);
+            g.text(cx, cy + 46, "分辨率", rgb(132, 140, 158), 1);
             let mut b = [0u8; 24];
             let mut l = hw::num2(&mut b, crate::gfx::Gfx::screen_w() as u32, 1);
             b[l] = b'x'; l += 1;
             l += hw::num2(&mut b[l..], crate::gfx::Gfx::screen_h() as u32, 1);
-            g.text(cx, cy + 62, unsafe { core::str::from_utf8_unchecked(&b[..l]) }, rgb(50, 56, 72), 1);
-            g.text(cx, cy + 92, "Compositor", rgb(130, 138, 156), 1);
-            g.text(cx, cy + 112, "Software 32bpp, 4x supersampled icons", rgb(50, 56, 72), 1);
-            btn(g, cx, cy + 150, 190, 34, "Take screenshot", true);
-            g.text(cx, cy + 200, "F12 or Print Screen also captures.", rgb(140, 148, 168), 1);
+            g.text(cx, cy + 66, core::str::from_utf8_unchecked(&b[..l]), rgb(50, 56, 72), 1);
+            g.text(cx, cy + 98, "合成器", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 118, "软件 32bpp · 图标 4 倍超采样", rgb(50, 56, 72), 1);
+            btn(g, cx, cy + 152, 180, 36, "立即截屏", true);
+            g.text(cx, cy + 202, "也可按 F12 或 Print Screen 截屏", rgb(140, 148, 168), 1);
             if s.msg_len > 0 {
-                let m = unsafe { core::str::from_utf8_unchecked(&s.msg[..s.msg_len]) };
-                g.text(cx, cy + 222, m, if s.msg_ok { rgb(40, 160, 90) } else { rgb(190, 70, 66) }, 1);
+                let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
+                g.text(cx, cy + 226, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
         }
         1 => {
-            g.text(cx, cy, "Permissions", rgb(40, 46, 60), 2);
-            g.text(cx, cy + 34, "Per-app access control, stored in .apps/_permissions", rgb(130, 138, 156), 1);
-            let apps = ["terminal", "files", "settings", "weather", "store", "about"];
-            g.text(cx, cy + 66, "APP", rgb(150, 158, 176), 1);
-            g.text(cx + 150, cy + 66, "STORAGE", rgb(150, 158, 176), 1);
-            g.text(cx + 250, cy + 66, "NOTIFY", rgb(150, 158, 176), 1);
-            g.text(cx + 340, cy + 66, "NETWORK", rgb(150, 158, 176), 1);
+            g.text(cx, cy, "应用权限", rgb(36, 42, 58), 2);
+            g.text(cx, cy + 36, "按应用控制存储、通知与网络", rgb(132, 140, 158), 1);
+            let apps = ["终端", "文件", "设置", "天气", "商店", "关于本机"];
+            g.text(cx, cy + 68, "应用", rgb(150, 158, 176), 1);
+            g.text(cx + 150, cy + 68, "存储", rgb(150, 158, 176), 1);
+            g.text(cx + 250, cy + 68, "通知", rgb(150, 158, 176), 1);
+            g.text(cx + 340, cy + 68, "网络", rgb(150, 158, 176), 1);
             let mut i = 0;
             while i < 6 {
-                let ry = cy + 88 + i as i32 * 34;
+                let ry = cy + 92 + i as i32 * 34;
                 g.text(cx, ry, apps[i], rgb(50, 56, 72), 1);
                 let mut k = 0;
                 while k < 3 {
-                    let on = unsafe { perm_get(apps[i], k as u8) };
+                    let on = perm_get(["terminal", "files", "settings", "weather", "store", "about"][i], k as u8);
                     toggle(g, cx + 150 + k as i32 * 100, ry - 3, on);
                     k += 1;
                 }
                 i += 1;
             }
-            g.text(cx, cy + 330, "Storage off makes appstore_set/get/del return denied.", rgb(150, 158, 176), 1);
+            g.text(cx, cy + 330, "关闭存储后，应用读写接口会真实拒绝", rgb(150, 158, 176), 1);
         }
         2 => {
-            g.text(cx, cy, "Software Update", rgb(40, 46, 60), 2);
-            g.text(cx, cy + 36, "Package format: CONLYUPD, CRC32 protected", rgb(130, 138, 156), 1);
-            g.text(cx, cy + 62, "Target: LBA 64 kernel region only", rgb(130, 138, 156), 1);
+            g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
+            g.text(cx, cy + 38, "包格式 CONLYUPD · CRC32 校验", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 62, "只写入 LBA 64 内核区，不动用户数据", rgb(132, 140, 158), 1);
             let p = if s.pending_len > 0 {
-                unsafe { core::str::from_utf8_unchecked(&s.pending[..s.pending_len]) }
+                core::str::from_utf8_unchecked(&s.pending[..s.pending_len])
             } else {
-                "(no package selected)"
+                "（尚未选择更新包）"
             };
-            g.text(cx, cy + 92, p, rgb(50, 56, 72), 1);
-            btn(g, cx, cy + 126, 170, 34, "Apply update", true);
-            btn(g, cx + 190, cy + 126, 150, 34, "Check device", false);
-            let mut dev = [0u8; 40];
+            g.round_rect(cx - 8, cy + 90, w - side - 52, 26, 7, rgb(232, 238, 248), 200);
+            g.text(cx, cy + 96, p, rgb(50, 56, 72), 1);
+            btn(g, cx, cy + 128, 150, 34, "应用更新", true);
+            btn(g, cx + 166, cy + 128, 150, 34, "检查设备", false);
+            let mut dev = [0u8; 48];
             let mut dl = 0;
-            match unsafe { block_info() } {
+            match block_info() {
                 Some((blocks, bs)) => {
-                    for c in b"Kernel device: ".iter() { dev[dl] = *c; dl += 1; }
+                    for c in "内核设备：".as_bytes().iter() { dev[dl] = *c; dl += 1; }
                     dl += hw::num2(&mut dev[dl..], blocks as u32, 1);
-                    for c in b" blocks x ".iter() { dev[dl] = *c; dl += 1; }
+                    for c in " 块 × ".as_bytes().iter() { dev[dl] = *c; dl += 1; }
                     dl += hw::num2(&mut dev[dl..], bs, 1);
                 }
                 None => {
-                    for c in b"Kernel device: none".iter() { dev[dl] = *c; dl += 1; }
+                    for c in "内核设备：未发现可写块设备".as_bytes().iter() { dev[dl] = *c; dl += 1; }
                 }
             }
-            g.text(cx, cy + 190, unsafe { core::str::from_utf8_unchecked(&dev[..dl]) }, rgb(120, 128, 148), 1);
+            g.text(cx, cy + 190, core::str::from_utf8_unchecked(&dev[..dl]), rgb(118, 128, 148), 1);
             if s.msg_len > 0 {
-                let m = unsafe { core::str::from_utf8_unchecked(&s.msg[..s.msg_len]) };
-                g.text(cx, cy + 220, m, if s.msg_ok { rgb(40, 160, 90) } else { rgb(190, 70, 66) }, 1);
+                let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
+                g.text(cx, cy + 220, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
-            g.text(cx, cy + 262, "User files, apps and settings are never touched.", rgb(150, 158, 176), 1);
+            g.text(cx, cy + 264, "用户文件、应用与设置始终保留", rgb(150, 158, 176), 1);
         }
         _ => draw_about(g, x + side + 16, top, w - side - 26, h - HEADER_H - 24),
     }
 }
 
-fn draw_weather(wx: &mut Weather, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
+unsafe fn draw_weather(wx: &mut Weather, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     wx.frame += 1;
     let ix = x + 14;
     let iy = y + HEADER_H + 6;
     let iw = w - 28;
-    let ih = h - HEADER_H - 20;
-    g.round_rect(ix, iy, iw, ih, 10, rgb(48, 112, 210), 255);
-    g.vgrad(ix + 1, iy + 1, iw - 2, ih / 2, rgb(86, 150, 236), rgb(56, 116, 206));
-    g.vgrad(ix + 1, iy + ih / 2, iw - 2, ih / 2 - 1, rgb(56, 116, 206), rgb(38, 86, 172));
+    let ih = h - HEADER_H - 18;
+    g.round_rect(ix, iy, iw, ih, 14, rgb(52, 118, 214), 255);
+    g.vgrad(ix + 1, iy + 1, iw - 2, ih / 2, rgb(94, 158, 240), rgb(58, 118, 210));
+    g.vgrad(ix + 1, iy + ih / 2, iw - 2, ih / 2 - 1, rgb(58, 118, 210), rgb(34, 82, 170));
+    g.round_rect(ix, iy, iw, 1, 0, rgb(255, 255, 255), 70);
     let f = wx.frame;
     sun_cloud(g, ix + iw - 92, iy + 74, 44, f, 1);
     let city = CITIES[wx.city];
-    g.text(ix + 18, iy + 14, city, rgb(240, 248, 255), 2);
+    g.text(ix + 20, iy + 14, city, rgb(240, 248, 255), 2);
     let cur = FORECAST[wx.city][wx.day];
     let mut tb = [0u8; 12];
     let tl = fmt_temp(cur.hi, wx.unit_f, &mut tb);
-    g.text(ix + 18, iy + 44, unsafe { core::str::from_utf8_unchecked(&tb[..tl]) }, rgb(255, 255, 255), 3);
+    g.text(ix + 20, iy + 44, core::str::from_utf8_unchecked(&tb[..tl]), rgb(255, 255, 255), 3);
     let unit = if wx.unit_f { "F" } else { "C" };
-    g.text(ix + 108, iy + 56, unit, rgb(210, 228, 255), 2);
-    g.round_rect(ix + iw - 88, iy + 14, 74, 30, 15, rgb(255, 255, 255), 40);
-    g.text_center(ix + iw - 51, iy + 21, if wx.unit_f { "F / C" } else { "C / F" }, rgb(255, 255, 255), 1);
-    let conf = match cur.cond {
-        0 => "Clear sky",
-        1 => "Partly cloudy",
-        _ => "Light rain",
-    };
-    g.text(ix + 18, iy + 96, conf, rgb(214, 232, 255), 1);
-    let rows_y = iy + 120;
+    g.text(ix + 20 + 3 * 24 + 6, iy + 62, unit, rgb(214, 232, 255), 2);
+    g.round_rect(ix + iw - 84, iy + 14, 70, 30, 15, rgb(255, 255, 255), 44);
+    g.text_center(ix + iw - 49, iy + 21, "C / F", rgb(255, 255, 255), 1);
+    let conf = match cur.cond { 0 => "晴", 1 => "多云", _ => "小雨" };
+    g.text(ix + 20, iy + 100, conf, rgb(214, 232, 255), 1);
+    let rows_y = iy + 126;
     let mut i = 0;
     while i < 5 {
         let ry = rows_y + i as i32 * 34;
         let fc = FORECAST[wx.city][i];
         if i == wx.day {
-            g.round_rect(ix + 10, ry - 4, iw - 20, 30, 8, rgb(255, 255, 255), 42);
+            g.round_rect(ix + 10, ry - 4, iw - 20, 30, 9, rgb(255, 255, 255), 46);
             g.rect(ix + 10, ry - 4, 3, 30, rgb(255, 232, 120), 255);
         }
-        g.text(ix + 22, ry + 2, DAY_NAMES[i], rgb(236, 245, 255), 1);
+        g.text(ix + 24, ry + 2, DAY_NAMES[i], rgb(236, 245, 255), 1);
         let mut hb = [0u8; 12];
         let hl = fmt_temp(fc.hi, wx.unit_f, &mut hb);
         let mut lb = [0u8; 12];
         let ll = fmt_temp(fc.lo, wx.unit_f, &mut lb);
-        g.text(ix + iw - 150, ry + 2, unsafe { core::str::from_utf8_unchecked(&hb[..hl]) }, rgb(255, 255, 255), 1);
-        g.text(ix + iw - 96, ry + 2, unsafe { core::str::from_utf8_unchecked(&lb[..ll]) }, rgb(184, 210, 246), 1);
+        let hu = if wx.unit_f { "F" } else { "C" };
+        g.text(ix + iw - 158, ry + 2, core::str::from_utf8_unchecked(&hb[..hl]), rgb(255, 255, 255), 1);
+        g.text(ix + iw - 158 + 24, ry + 2, hu, rgb(214, 232, 255), 1);
+        g.text(ix + iw - 96, ry + 2, core::str::from_utf8_unchecked(&lb[..ll]), rgb(190, 214, 246), 1);
+        g.text(ix + iw - 96 + 24, ry + 2, hu, rgb(190, 214, 246), 1);
         sun_cloud(g, ix + iw - 210, ry + 10, 22, f + i as u32 * 7, fc.cond);
         i += 1;
     }
-    g.text(ix + 18, iy + ih - 24, "Offline 5-day forecast. Units persist via app store KV.", rgb(202, 224, 252), 1);
+    g.text(ix + 20, iy + ih - 24, "离线 5 日天气 · 单位保存在应用存储", rgb(204, 226, 252), 1);
 }
 
-fn draw_store(s: &mut Store, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
+unsafe fn draw_store(s: &mut Store, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let top = y + HEADER_H + 10;
     let cw = (w - 60) / 2;
     let ch = 96;
@@ -763,53 +784,55 @@ fn draw_store(s: &mut Store, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
         let cx = x + 20 + col * (cw + 16);
         let cy = top + row * (ch + 8);
         let selected = s.sel == i;
-        g.round_rect(cx, cy, cw, ch, 10, if selected { rgb(226, 236, 252) } else { rgb(242, 245, 250) }, 255);
-        if selected { g.round_rect_outline(cx, cy, cw, ch, 10, rgb(90, 150, 240), 200); }
-        let ic = unsafe { icon(STORE_APPS[i].2) };
-        g.blit_rgba(cx + 12, cy + 16, 44, 44, ic, 64, 64);
-        g.text(cx + 66, cy + 14, STORE_APPS[i].1, rgb(44, 52, 68), 1);
+        g.round_rect(cx, cy, cw, ch, 12, if selected { rgb(219, 232, 253) } else { rgb(241, 244, 250) }, 255);
+        if selected {
+            g.round_rect_outline(cx, cy, cw, ch, 12, rgb(74, 140, 244), 220);
+        }
+        let ic = icon(STORE_APPS[i].2);
+        g.blit_rgba(cx + 12, cy + 14, 42, 42, ic, 64, 64);
+        g.text(cx + 64, cy + 14, STORE_APPS[i].1, rgb(40, 48, 64), 1);
         let desc = STORE_APPS[i].3;
-        let mut dl = desc.len() as i32;
-        if dl > 30 { dl = 30; }
-        g.text(cx + 66, cy + 34, &desc[..dl as usize], rgb(130, 138, 156), 1);
-        let label = if s.installed[i] { "Installed" } else { "Install" };
-        btn(g, cx + 66, cy + 54, 86, 26, label, !s.installed[i]);
+        g.text(cx + 64, cy + 34, desc, rgb(128, 136, 156), 1);
+        let label = if s.installed[i] { "已安装" } else { "安装" };
+        btn(g, cx + 64, cy + 56, 82, 26, label, !s.installed[i]);
         i += 1;
     }
     if s.msg_len > 0 {
-        let m = unsafe { core::str::from_utf8_unchecked(&s.msg[..s.msg_len]) };
-        g.text(x + 24, y + h - 28, m, if s.msg_ok { rgb(40, 160, 90) } else { rgb(190, 70, 66) }, 1);
+        let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
+        g.text(x + 24, y + h - 28, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
     }
 }
 
-fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
+unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let cx = x + w / 2;
-    let ic = unsafe { icon(AppId::About) };
-    let s = if w < 400 { 76 } else { 96 };
-    g.blit_rgba(cx - s / 2, y + 18, s, s, ic, 64, 64);
-    g.text_center(cx, y + 18 + s + 8, "HYWOS", rgb(30, 38, 56), 3);
-    g.text_center(cx, y + 18 + s + 62, "HYWOS 1.0.0 \"Harmony of Stars\"", rgb(110, 120, 140), 1);
+    let lx = cx - 48;
+    let ly = y + 48;
+    g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
+    g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
+    g.big_text(cx - 40, y + 142, "HYWOS", rgb(28, 36, 56), 255);
+    g.text_center(cx, y + 194, "星河版 · 版本 1.0.1", rgb(108, 118, 140), 1);
     let lines = [
-        "Kernel      HYWOS 1.0.0 (Rust, no_std UEFI)",
-        "Architecture x86_64 / ACPI SMP topology",
-        "Graphics    GOP software compositor",
-        "License     MIT",
-        "Source      github.com/lmxdg/HYWOS",
+        "内核    HYWOS Kernel 1.0.1（Rust no_std UEFI）",
+        "架构    x86_64 · ACPI / CPUID 拓扑",
+        "图形    GOP 软件合成器 · 双缓冲",
+        "授权    MIT License",
+        "源码    github.com/lmxdg/HYWOS",
     ];
     let mut i = 0;
     while i < 5 {
-        g.text(x + 24, y + 18 + s + 74 + i as i32 * 20, lines[i], rgb(72, 82, 100), 1);
+        g.text(x + 22, y + 220 + i as i32 * 22, lines[i], rgb(68, 78, 98), 1);
         i += 1;
     }
     let c = hw::cpu();
     let mut b = [0u8; 40];
     let mut l = 0;
-    for ch in b"Cores       ".iter() { b[l] = *ch; l += 1; }
+    for ch in "核心    ".as_bytes().iter() { b[l] = *ch; l += 1; }
     l += hw::num2(&mut b[l..], c.enabled as u32, 1);
-    for ch in b" / ".iter() { b[l] = *ch; l += 1; }
+    for ch in " / ".as_bytes().iter() { b[l] = *ch; l += 1; }
     l += hw::num2(&mut b[l..], c.total as u32, 1);
+    for ch in " 个逻辑处理器".as_bytes().iter() { b[l] = *ch; l += 1; }
     let _ = h;
-    g.text(x + 24, y + 18 + s + 74 + 5 * 20, unsafe { core::str::from_utf8_unchecked(&b[..l]) }, rgb(72, 82, 100), 1);
+    g.text(x + 22, y + 220 + 5 * 22, core::str::from_utf8_unchecked(&b[..l]), rgb(68, 78, 98), 1);
 }
 
 fn draw_generic(g: &Gfx, id: AppId, x: i32, y: i32, w: i32, h: i32) {
@@ -817,8 +840,8 @@ fn draw_generic(g: &Gfx, id: AppId, x: i32, y: i32, w: i32, h: i32) {
     let s = 88;
     g.blit_rgba(x + w / 2 - s / 2, y + HEADER_H + 30, s, s, ic, 64, 64);
     g.text_center(x + w / 2, y + HEADER_H + 30 + s + 16, id.name(), rgb(40, 48, 64), 2);
-    g.text_center(x + w / 2, y + HEADER_H + 30 + s + 50, "Part of the HYWOS application suite", rgb(130, 138, 156), 1);
-    g.text_center(x + w / 2, y + HEADER_H + 30 + s + 70, "Runtime available in a future update", rgb(160, 168, 184), 1);
+    g.text_center(x + w / 2, y + HEADER_H + 30 + s + 56, "HYWOS 应用套件成员", rgb(130, 138, 156), 1);
+    g.text_center(x + w / 2, y + HEADER_H + 30 + s + 80, "功能将在后续版本提供", rgb(160, 168, 184), 1);
 }
 
 pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i32, w: i32, h: i32) -> AppAction {
@@ -901,13 +924,13 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             let ix = x + 14;
             let iy = y + HEADER_H + 6;
             let iw = w - 28;
-            if mx > ix + iw - 88 && mx < ix + iw - 14 && my > iy + 14 && my < iy + 44 {
+            if mx > ix + iw - 84 && mx < ix + iw - 14 && my > iy + 12 && my < iy + 46 {
                 st.weather.unit_f = !st.weather.unit_f;
                 let u: &[u8] = if st.weather.unit_f { b"f" } else { b"c" };
                 let _ = appstore_set("weather", "unit", core::str::from_utf8_unchecked(u));
                 return AppAction::None;
             }
-            let rows_y = iy + 120;
+            let rows_y = iy + 126;
             let mut i = 0;
             while i < 5 {
                 let ry = rows_y + i as i32 * 34;
@@ -920,7 +943,7 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
         AppId::Store => {
             let top = HEADER_H + 10;
             let cw = (w - 60) / 2;
-            let ch = 108;
+            let ch = 96;
             let mut i = 0;
             while i < 6 {
                 let col = (i % 2) as i32;
@@ -929,7 +952,7 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
                 let cy = top + row * (ch + 8);
                 if lx > cx && lx < cx + cw && ly > cy && ly < cy + ch {
                     st.store.sel = i;
-                    if lx > cx + 60 && ly > cy + 50 && ly < cy + 84 {
+                    if lx > cx + 60 && ly > cy + 50 && ly < cy + 88 {
                         if st.store.installed[i] {
                             st.store.msgl("Already installed: " , STORE_APPS[i].1);
                         } else if appstore_set(STORE_APPS[i].0, "installed", "1") {
@@ -948,9 +971,9 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
         }
         AppId::Files => {
             let top = HEADER_H + 8;
-            let side = 168;
+            let side = 176;
             if lx < 10 + side && ly > top {
-                let idx = ((ly - top - 14 + 6) / 30) as usize;
+                let idx = ((ly - top - 14 + 8) / 32) as usize;
                 let dirs = ["\\home\\user", "\\home\\user\\Documents", "\\home\\user\\Pictures", "\\home\\user\\Screenshots", "\\home\\user\\.apps"];
                 if idx < 5 {
                     st.files_sel = idx;
@@ -963,8 +986,8 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             let mut ents: [DirEntry; 32] = core::mem::zeroed();
             let n = list_dir(usr_vol(), st.files_cwd.as_str(), &mut ents);
             let lx2 = side + 24;
-            let idx = ((ly - top - 26 + 5) / 26).max(0) as usize;
-            if ly > top + 20 && idx < n {
+            let idx = ((ly - top - 34 + 7) / 28).max(0) as usize;
+            if ly > top + 28 && idx < n {
                 let same = st.files_click == idx;
                 st.files_click = idx;
                 if same {

@@ -436,10 +436,55 @@ impl Gfx {
     }
 
     pub fn text_a(&self, x: i32, y: i32, s: &str, c: u32, scale: i32, alpha: u8) {
+        let b = s.as_bytes();
+        let mut i = 0usize;
         let mut px = x;
-        for b in s.bytes() {
-            self.glyph(px, y, b, c, scale, alpha);
-            px += 8 * scale;
+        while i < b.len() {
+            let cp = next_utf8(b, &mut i);
+            if cp < 128 {
+                self.glyph(px, y, cp as u8, c, scale, alpha);
+                px += 8 * scale;
+            } else {
+                self.cjk_glyph(px, y, cp, c, scale, alpha);
+                px += 16 * scale;
+            }
+        }
+    }
+
+    pub fn cjk_glyph(&self, x: i32, y: i32, cp: u32, c: u32, scale: i32, alpha: u8) {
+        let mut lo = 0usize;
+        let mut hi = crate::cjk::CJK_COUNT;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if crate::cjk::CJK_CP[mid] < cp {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo >= crate::cjk::CJK_COUNT || crate::cjk::CJK_CP[lo] != cp {
+            let s = if scale < 1 { 1 } else { scale };
+            self.round_rect_outline(x + 1, y + 1, 16 * s - 2, 16 * s - 2, 3, c, alpha / 2);
+            return;
+        }
+        let glyph = &crate::cjk::CJK_BITS[lo * crate::cjk::CJK_BPG..(lo + 1) * crate::cjk::CJK_BPG];
+        let mut gy = 0;
+        while gy < 16 {
+            let mut gx = 0;
+            while gx < 16 {
+                let byte = glyph[gy * 8 + gx / 2];
+                let nib = if gx % 2 == 0 { byte >> 4 } else { byte & 0x0f };
+                if nib > 0 {
+                    let a = ((nib as u32 * 17 * alpha as u32) / 255) as u8;
+                    if scale == 1 {
+                        self.put(x + gx as i32, y + gy as i32, c, a);
+                    } else {
+                        self.rect(x + gx as i32 * scale, y + gy as i32 * scale, scale, scale, c, a);
+                    }
+                }
+                gx += 1;
+            }
+            gy += 1;
         }
     }
 
@@ -529,7 +574,45 @@ impl Gfx {
 }
 
 pub fn text_width(s: &str, scale: i32) -> i32 {
-    s.len() as i32 * 8 * scale
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    let mut w = 0i32;
+    while i < b.len() {
+        let cp = next_utf8(b, &mut i);
+        w += if cp < 128 { 8 * scale } else { 16 * scale };
+    }
+    w
+}
+
+pub fn next_utf8(b: &[u8], i: &mut usize) -> u32 {
+    if *i >= b.len() { return 0; }
+    let c = b[*i];
+    if c < 0x80 {
+        *i += 1;
+        return c as u32;
+    }
+    let (n, mut cp) = if c & 0xe0 == 0xc0 {
+        (1usize, (c & 0x1f) as u32)
+    } else if c & 0xf0 == 0xe0 {
+        (2usize, (c & 0x0f) as u32)
+    } else if c & 0xf8 == 0xf0 {
+        (3usize, (c & 0x07) as u32)
+    } else {
+        *i += 1;
+        return 0xfffd;
+    };
+    *i += 1;
+    let mut k = 0;
+    while k < n {
+        if *i < b.len() && b[*i] & 0xc0 == 0x80 {
+            cp = (cp << 6) | (b[*i] & 0x3f) as u32;
+            *i += 1;
+        } else {
+            break;
+        }
+        k += 1;
+    }
+    cp
 }
 
 pub fn sqrtf(v: f32) -> f32 {

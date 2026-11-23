@@ -1,4 +1,4 @@
-# HYWOS 1.0.2 «星河 · 驱动版»
+# HYWOS 1.0.3 «星河 · 粒子版»
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
@@ -8,7 +8,7 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 以 `no_std` 方式直接运行在 UEFI 固件之上。1.0.2 增加了显卡、PS/2 键鼠与声卡的
 寄存器级驱动，并保留 1.0.1 的完整中文界面。
 
-![开机动画](docs/screenshots/boot-1.png)
+![粒子 O](docs/screenshots/boot-o.png)
 
 ## 目录
 
@@ -30,6 +30,23 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
 
+## 1.0.3 新变化
+
+- **全新启动动画**：168 个粒子从四周螺旋汇聚成发光的 **O**，随后 O 收缩
+  移动到标题位置，H、Y、W、S 依次淡入，最终构成 HYWOS 中的 O，
+  并浮现「星河 · 中文界面 · 64 位」。
+- **输入修复**：
+  - 鼠标优先级改为 绝对指针（Absolute Pointer）→ SimplePointer → PS/2；
+  - SimplePointer 单帧位移限幅 ±45，并丢弃 >150 的同步跳变；
+  - PS/2 鼠标严格校验 ACK 与设备 ID，三字节包校验溢出位并过滤异常跳变；
+  - PS/2 初始化重新独占键盘扫描，避免与固件驱动争抢数据。
+- **现代键鼠**：新增 `src/input.rs`，接入 UEFI `SimpleTextInputEx` 与
+  `AbsolutePointer`，并作为 PS/2 的回退/补充。
+- **virtio-gpu**：新增 **modern virtio-pci** 支持（解析 PCI capability、
+  协商 VIRTIO_F_VERSION_1、common cfg 配置队列、notify 区 MMIO 通知），
+  与 legacy 共用同一套 2D 命令。
+- 版本号升级到 1.0.3；测试环境切换到 **QEMU 11.1.3**（源码构建）。
+
 ## 1.0.2 新变化
 
 - **显卡驱动**：新增 VBE/标准 VGA（Bochs VBE）、virtio-gpu（legacy 2D）、
@@ -47,7 +64,7 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 | 设备 | 驱动实现 | 验证状态 |
 |---|---|---|
 | 标准 VGA / Bochs VBE | PCI 1234:1111，VBE I/O 0x1CE/0x1CF，设置 1024×768×32 并使用 LFB | **QEMU `-vga std` 实测通过**（截图 1024×768） |
-| virtio-gpu | legacy virtio-pci（I/O BAR0），control virtqueue，2D 命令：GET_DISPLAY_INFO、RESOURCE_CREATE_2D、ATTACH_BACKING、SET_SCANOUT、TRANSFER_TO_HOST_2D、RESOURCE_FLUSH | 代码完整；当前 QEMU 8.2 构建缺少 `virtio-gpu-device`，无法在本次环境实测 |
+| virtio-gpu | legacy + modern virtio-pci，control virtqueue，2D 命令 | modern 协议已实现；QEMU 11 的 64 位 BAR 位于 0xC000000000，队列通知未生效，命令超时 |
 | VMware SVGA II | PCI 15AD:0405，SVGA II 寄存器与 LFB，SYNC 刷新 | 代码完整；当前 QEMU 固件只暴露 index 寄存器，SetMode 失败时自动回退 GOP |
 | UEFI GOP | 固件帧缓冲 | 实测通过（回退路径） |
 | PS/2 键盘 | 8042，禁用/启用扫描，Set-1 扫描码表 | **实测通过**（QEMU sendkey F2 打开天气） |
@@ -255,10 +272,10 @@ BMP 截屏、CONLYUPD、Block I/O、终端文件操作。
 
 受限：
 
-- **virtio-gpu** 驱动代码完整，但本次 QEMU 构建缺少 `virtio-gpu-device`，
-  未能实测；
+- **virtio-gpu** modern 协议已实现，但 QEMU 11 + OVMF 将 64 位 BAR 分配在
+  0xC000000000，UEFI 应用侧队列通知未生效，仍需 PciIo.Map 映射；
 - **VMware SVGA II** 在当前 QEMU 固件下只能访问 index 寄存器，
-  SetMode 失败后回退 GOP；驱动代码保留，换用完整 QEMU/真机 SVGA 可继续验证；
+  SetMode 失败后回退 GOP；
 - 无自有 TCP/IP 协议栈，仅展示 SNP 的真实 MAC/链路状态；
 - 多核为拓扑真实 + 单核协作式调度，无 AP trampoline；
 - 文件系统为 FAT32；无中文输入法；

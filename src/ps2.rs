@@ -47,11 +47,11 @@ unsafe fn wr_data(d: u8) {
     outb(0x60, d);
 }
 
-unsafe fn rd_data() -> u8 {
+unsafe fn rd_data() -> Option<u8> {
     if wait_read() {
-        inb(0x60)
+        Some(inb(0x60))
     } else {
-        0
+        None
     }
 }
 
@@ -63,10 +63,10 @@ unsafe fn flush_out() {
     }
 }
 
-unsafe fn mouse_write(d: u8) {
+unsafe fn mouse_write(d: u8) -> bool {
     wr_cmd(0xD4);
     wr_data(d);
-    let _ = rd_data();
+    rd_data() == Some(0xFA)
 }
 
 pub fn keyboard_ok() -> bool {
@@ -82,26 +82,35 @@ pub unsafe fn init() -> bool {
     wr_cmd(0xAD);
     wr_cmd(0xA7);
     flush_out();
+    wr_cmd(0xA8);
+    flush_out();
     wr_cmd(0xAE);
     wr_data(0xF4);
     let _ = rd_data();
     KBD_OK = true;
-    wr_cmd(0xA8);
-    mouse_write(0xF6);
-    mouse_write(0xF4);
-    mouse_write(0xF3);
-    mouse_write(0x64);
-    mouse_write(0xE8);
-    mouse_write(0x03);
-    mouse_write(0xF3);
-    mouse_write(0x64);
-    mouse_write(0xF2);
+    if !mouse_write(0xF6) {
+        flush_out();
+        MOUSE_OK = false;
+        return false;
+    }
+    if !mouse_write(0xF4) {
+        MOUSE_OK = false;
+        return false;
+    }
+    let _ = mouse_write(0xF3);
+    let _ = mouse_write(0x64);
+    let _ = mouse_write(0xE8);
+    let _ = mouse_write(0x03);
+    let _ = mouse_write(0xF3);
+    let _ = mouse_write(0x64);
+    wr_cmd(0xD4);
+    wr_data(0xF2);
+    let ack = rd_data();
     let id = rd_data();
-    MOUSE_OK = id == 0 || id == 3 || id == 4;
+    MOUSE_OK = ack == Some(0xFA) && matches!(id, Some(0) | Some(3) | Some(4));
     flush_out();
-    KBD_OK
+    MOUSE_OK
 }
-
 unsafe fn kbd_press(code: u8) {
     let mut out: Option<(u16, u16)> = None;
     if EXT {
@@ -167,6 +176,9 @@ unsafe fn kbd_press(code: u8) {
 }
 
 unsafe fn kbd_byte(b: u8) {
+    if !KBD_OK {
+        return;
+    }
     if b == 0xFA || b == 0xAA || b == 0xEE {
         return;
     }
@@ -191,7 +203,8 @@ unsafe fn kbd_byte(b: u8) {
 
 unsafe fn mouse_byte(b: u8) {
     if PI == 0 {
-        if b & 0x08 == 0 {
+        if b & 0x08 == 0 || b & 0xC0 != 0 {
+            PI = 0;
             return;
         }
         PACKET[0] = b;
@@ -204,6 +217,10 @@ unsafe fn mouse_byte(b: u8) {
         PI = 0;
         let dx = PACKET[1] as i8 as i32;
         let dy = PACKET[2] as i8 as i32;
+        if dx.abs() > 100 || dy.abs() > 100 {
+            BTN = PACKET[0] & 0x07;
+            return;
+        }
         MX += dx;
         MY -= dy;
         BTN = PACKET[0] & 0x07;
@@ -217,11 +234,14 @@ pub unsafe fn poll() {
         if st & 1 == 0 {
             break;
         }
-        let b = inb(0x60);
         if st & 0x20 != 0 {
+            let b = inb(0x60);
             mouse_byte(b);
-        } else {
+        } else if KBD_OK {
+            let b = inb(0x60);
             kbd_byte(b);
+        } else {
+            break;
         }
         guard += 1;
     }

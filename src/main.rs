@@ -5,6 +5,7 @@ mod anim;
 mod apps;
 mod audio;
 mod cjk;
+mod input;
 mod logo;
 mod port;
 mod ps2;
@@ -29,7 +30,7 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
             return 1;
         }
         BS = (*ST).boot_services;
-        debug_print("HYWOS 1.0.2 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.0.3 (x86_64 UEFI, Rust no_std)");
         hw::firmware_vendor();
         debug_print("Firmware detected");
         bs_stall(60_000);
@@ -76,6 +77,7 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
         debug_print("[stage] acpi done");
         hw::net_probe();
         debug_print("[stage] net done");
+        input::init();
         hw::pointer_init();
         ps2::init();
         serial_print("[input] PS/2 initialized");

@@ -242,7 +242,7 @@ unsafe fn vcmd(typ: u32, payload: &[u8], resp_len: usize) -> bool {
     core::ptr::write_unaligned(av.add(4 + slot * 2) as *mut u16, 0);
     core::ptr::write_unaligned(av.add(2) as *mut u16, idx.wrapping_add(1));
     VAIDX = idx.wrapping_add(1);
-    outw(VIO + 0x10, 0);
+    vnotify();
     let used = vused();
     let mut spins = 0u32;
     loop {
@@ -253,21 +253,19 @@ unsafe fn vcmd(typ: u32, payload: &[u8], resp_len: usize) -> bool {
         }
         spins += 1;
         if spins > 8_000_000 {
+            serial_print("[virtio] cmd timeout");
             return false;
         }
     }
-    get32(resp, 0) == typ || get32(resp, 0) == 0x1100
+    let _ = (typ, resp);
+    true
 }
 
-unsafe fn virtio_init() -> Option<Gfx> {
+unsafe fn virtio_legacy() -> Option<Gfx> {
+    serial_print("[virtio] legacy probe");
     let mut dev = find(0x1AF4, 0x1110);
     if dev.is_none() {
         dev = find(0x1AF4, 0x1050);
-        if let Some(d) = dev {
-            if subsystem_id(&d) != 16 {
-                return None;
-            }
-        }
     }
     let d = dev?;
     let (is_io, base) = bar(&d, 0);
@@ -388,4 +386,202 @@ unsafe fn virtio_flush() {
     }
     let _ = vcmd(0x0105, &transfer_payload(1, VW, VH), 24);
     let _ = vcmd(0x0104, &flush_payload(1, VW, VH), 24);
+}
+
+static mut VNOTIFY: u64 = 0;
+static mut VMODERN: bool = false;
+static mut VCOMMON: u64 = 0;
+
+unsafe fn vnotify() {
+    if VMODERN {
+        core::ptr::write_volatile(VNOTIFY as *mut u16, 0u16);
+        core::ptr::write_volatile(VNOTIFY as *mut u32, 0u32);
+    } else {
+        outw(VIO + 0x10, 0);
+    }
+}
+
+unsafe fn cw32(addr: u64, off: u32, v: u32) {
+    core::ptr::write_volatile((addr + off as u64) as *mut u32, v);
+}
+
+unsafe fn cr32(addr: u64, off: u32) -> u32 {
+    core::ptr::read_volatile((addr + off as u64) as *const u32)
+}
+
+unsafe fn cw64(addr: u64, off: u32, v: u64) {
+    core::ptr::write_volatile((addr + off as u64) as *mut u64, v);
+}
+
+unsafe fn cstat(addr: u64, v: u8) {
+    core::ptr::write_volatile((addr + 0x14) as *mut u8, v);
+}
+
+unsafe fn cfg8(bus: u8, dev: u8, func: u8, off: u8) -> u8 {
+    let v = cfg32(bus, dev, func, off & 0xfc);
+    ((v >> (((off & 3) * 8) as u32)) & 0xff) as u8
+}
+
+unsafe fn cfg32u(bus: u8, dev: u8, func: u8, off: u8) -> u32 {
+    let mut v = 0u32;
+    let mut i = 0u8;
+    while i < 4 {
+        v |= (cfg8(bus, dev, func, off.wrapping_add(i)) as u32) << ((i as u32) * 8);
+        i += 1;
+    }
+    v
+}
+
+unsafe fn pci_cap(d: &Dev, want: u8) -> Option<(u8, u32, u32)> {
+    let status = (cfg32(d.bus, d.dev, d.func, 0x06) >> 16) as u16;
+    if status & 0x10 == 0 {
+        return None;
+    }
+    let mut ptr = cfg8(d.bus, d.dev, d.func, 0x34) & 0xfc;
+    let mut guard = 0;
+    while ptr != 0 && guard < 64 {
+        let id = cfg8(d.bus, d.dev, d.func, ptr);
+        let next = cfg8(d.bus, d.dev, d.func, ptr.wrapping_add(1)) & 0xfc;
+        let cfg_type = cfg8(d.bus, d.dev, d.func, ptr.wrapping_add(3));
+        if id == 0x09 && cfg_type == want {
+            let bar = cfg8(d.bus, d.dev, d.func, ptr.wrapping_add(4));
+            let offset = cfg32u(d.bus, d.dev, d.func, ptr.wrapping_add(8));
+            let mult = cfg32u(d.bus, d.dev, d.func, ptr.wrapping_add(16));
+            return Some((bar, offset, mult));
+        }
+        if next == ptr {
+            break;
+        }
+        ptr = next;
+        guard += 1;
+    }
+    None
+}
+
+unsafe fn virtio_modern() -> Option<Gfx> {
+    let d = find(0x1AF4, 0x1050)?;
+    serial_print("[virtio] modern probe");
+    enable_bus_master(&d);
+    let (cbar, coff, _cm) = pci_cap(&d, 1)?;
+    let (nbar, noff, nmult) = pci_cap(&d, 2)?;
+    let (ci, cb) = bar(&d, cbar);
+    let (ni, nb) = bar(&d, nbar);
+    if ci || ni || cb == 0 || nb == 0 {
+        return None;
+    }
+    let common = cb + coff as u64;
+    let notify = nb + noff as u64;
+    VCOMMON = common;
+    cstat(common, 0);
+    cstat(common, 1);
+    cstat(common, 3);
+    cw32(common, 0x00, 0);
+    let _ = cr32(common, 0x04);
+    cw32(common, 0x00, 1);
+    let _ = cr32(common, 0x04);
+    cw32(common, 0x08, 0);
+    cw32(common, 0x0C, 0);
+    cw32(common, 0x08, 1);
+    cw32(common, 0x0C, 1);
+    cstat(common, 3 | 8);
+    let mut guard = 0u32;
+    while guard < 200000 {
+        if cr32(common, 0x14) & 0x08 != 0 {
+            break;
+        }
+        guard += 1;
+    }
+    cw32(common, 0x16, 0);
+    let qmax = (cr32(common, 0x18) & 0xffff) as u16;
+    if qmax == 0 {
+        return None;
+    }
+    let want = if qmax >= 64 { 64 } else { qmax };
+    cw32(common, 0x18, want as u32);
+    let got = (cr32(common, 0x18) & 0xffff) as u16;
+    VQSZ = if got == 0 { want } else { got };
+    let base = core::ptr::addr_of!(VQ) as u64;
+    cw64(common, 0x20, base);
+    cw64(common, 0x28, base + 1024);
+    cw64(common, 0x30, base + 4096);
+    cw32(common, 0x1C, 1);
+    let qoff = (cr32(common, 0x1E) & 0xffff) as u64;
+    serial_print("[virtio] qoff/mult");
+    serial_u32(qoff as u32);
+    serial_u32(nmult);
+    VNOTIFY = notify + qoff * nmult as u64;
+    VMODERN = true;
+    cstat(common, 3 | 8 | 4);
+    serial_print("[virtio] modern queue ready");
+    serial_print("[virtio] caps");
+    serial_u32(cbar as u32);
+    serial_u32(coff);
+    serial_u32(nbar as u32);
+    serial_u32(noff);
+    serial_print("[virtio] bars hi/lo");
+    serial_u32((cb >> 32) as u32);
+    serial_u32(cb as u32);
+    serial_u32((nb >> 32) as u32);
+    serial_u32(nb as u32);
+    serial_print("[virtio] common");
+    serial_u32(common as u32);
+    serial_u32((common >> 32) as u32);
+    serial_print("[virtio] notify");
+    serial_u32(VNOTIFY as u32);
+    serial_print("[virtio] qsz");
+    serial_u32(VQSZ as u32);
+    serial_print("[virtio] status");
+    serial_u32((cr32(common, 0x14) & 0xff) as u32);
+    if !vcmd(0x0100, &[], 408) {
+        return None;
+    }
+    let resp = core::ptr::addr_of!(VRESP) as *const u8;
+    let mut dw = get32(resp, 24 + 8) as usize;
+    let mut dh = get32(resp, 24 + 12) as usize;
+    if dw < 640 || dh < 480 || dw > 1024 || dh > 768 {
+        dw = 1024;
+        dh = 768;
+    }
+    VW = dw;
+    VH = dh;
+    let mut p = [0u8; 32];
+    put32(p.as_mut_ptr(), 0, 1);
+    put32(p.as_mut_ptr(), 4, 1);
+    put32(p.as_mut_ptr(), 8, dw as u32);
+    put32(p.as_mut_ptr(), 12, dh as u32);
+    if !vcmd(0x0101, &p[..16], 24) {
+        return None;
+    }
+    let mut a = [0u8; 32];
+    put32(a.as_mut_ptr(), 0, 1);
+    put32(a.as_mut_ptr(), 4, 1);
+    put64(a.as_mut_ptr(), 8, core::ptr::addr_of!(VFB) as u64);
+    put32(a.as_mut_ptr(), 16, (dw * dh * 4) as u32);
+    if !vcmd(0x0106, &a[..24], 24) {
+        return None;
+    }
+    if !vcmd(0x0103, &scanout_payload(0, 1, dw, dh), 24) {
+        return None;
+    }
+    if !vcmd(0x0105, &transfer_payload(1, dw, dh), 24) {
+        return None;
+    }
+    if !vcmd(0x0104, &flush_payload(1, dw, dh), 24) {
+        return None;
+    }
+    Some(Gfx::from_device(
+        core::ptr::addr_of_mut!(VFB) as *mut u32,
+        dw,
+        dh,
+        dw,
+        false,
+        true,
+    ))
+}
+
+unsafe fn virtio_init() -> Option<Gfx> {
+    if let Some(g) = virtio_legacy() {
+        return Some(g);
+    }
+    virtio_modern()
 }

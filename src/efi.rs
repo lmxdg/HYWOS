@@ -285,6 +285,9 @@ pub fn read_key() -> Option<(u16, u16)> {
         if let Some(k) = crate::ps2::take_key() {
             return Some(k);
         }
+        if let Some(k) = crate::input::read_key_ex() {
+            return Some(k);
+        }
     }
     unsafe {
         let st = &*ST;

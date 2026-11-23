@@ -1,35 +1,49 @@
 use crate::gfx::{cosf, lerp, rgb, sinf, Gfx};
 
-const STARS: usize = 140;
-const FRAMES_TOTAL: u32 = 92;
+const PARTS: usize = 168;
+const FRAMES_TOTAL: u32 = 114;
 
 #[derive(Clone, Copy)]
-struct Star {
-    x: f32,
-    y: f32,
-    angle: f32,
-    radius: f32,
-    speed: f32,
+struct Part {
+    sx: f32,
+    sy: f32,
+    ang: f32,
+    delay: f32,
     size: i32,
     tint: u32,
+    x: f32,
+    y: f32,
     px: i32,
     py: i32,
-    alive: bool,
 }
 
 pub struct BootAnim {
     frame: u32,
-    stars: [Star; STARS],
+    parts: [Part; PARTS],
     cx: i32,
     cy: i32,
-    seed: u32,
+    tx: i32,
+    ty: i32,
     bg_top: u32,
     bg_bot: u32,
+    w: i32,
+    h: i32,
+    title_cleared: bool,
 }
 
 fn rnd(seed: &mut u32) -> u32 {
     *seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
     *seed
+}
+
+fn ease(t: f32) -> f32 {
+    if t <= 0.0 {
+        0.0
+    } else if t >= 1.0 {
+        1.0
+    } else {
+        t * t * (3.0 - 2.0 * t)
+    }
 }
 
 fn background(g: &Gfx, top: u32, bot: u32) {
@@ -48,182 +62,177 @@ fn background(g: &Gfx, top: u32, bot: u32) {
 
 impl BootAnim {
     pub fn new(g: &Gfx) -> BootAnim {
-        let cx = g.w as i32 / 2;
-        let cy = g.h as i32 / 2 - 20;
+        let w = g.w as i32;
+        let h = g.h as i32;
+        let cx = w / 2;
+        let cy = h / 2 - 26;
         let bg_top = rgb(9, 13, 34);
         let bg_bot = rgb(6, 5, 16);
         background(g, bg_top, bg_bot);
-        let mut seed = 0x1234567u32;
-        let mut stars = [Star {
-            x: 0.0,
-            y: 0.0,
-            angle: 0.0,
-            radius: 0.0,
-            speed: 0.0,
+        let tx = cx - 40;
+        let ty = cy - 16;
+        let mut seed = 0x51a3c7u32;
+        let mut parts = [Part {
+            sx: 0.0,
+            sy: 0.0,
+            ang: 0.0,
+            delay: 0.0,
             size: 2,
             tint: 0,
-            px: -100,
-            py: -100,
-            alive: false,
-        }; STARS];
+            x: 0.0,
+            y: 0.0,
+            px: -1000,
+            py: -1000,
+        }; PARTS];
         let mut i = 0;
-        while i < STARS {
+        while i < PARTS {
             let ang = (rnd(&mut seed) % 6283) as f32 / 1000.0;
-            let rad = 40.0 + (rnd(&mut seed) % 1000) as f32 * 0.55;
-            let spd = 0.006 + (rnd(&mut seed) % 40) as f32 * 0.0006;
-            let tint = match rnd(&mut seed) % 3 {
+            let sx = (rnd(&mut seed) % w as u32) as f32;
+            let sy = (rnd(&mut seed) % h as u32) as f32;
+            let tint = match rnd(&mut seed) % 4 {
                 0 => rgb(120, 220, 255),
-                1 => rgb(190, 170, 255),
+                1 => rgb(150, 140, 255),
+                2 => rgb(255, 150, 220),
                 _ => rgb(255, 255, 255),
             };
-            stars[i] = Star {
-                x: cx as f32 + cosf(ang) * rad,
-                y: cy as f32 + sinf(ang) * rad * 0.62,
-                angle: ang,
-                radius: rad,
-                speed: spd,
-                size: 1 + (rnd(&mut seed) % 2) as i32,
+            parts[i] = Part {
+                sx,
+                sy,
+                ang,
+                delay: (i % 24) as f32 * 0.018,
+                size: 1 + (rnd(&mut seed) % 3) as i32,
                 tint,
-                px: -100,
-                py: -100,
-                alive: true,
+                x: sx,
+                y: sy,
+                px: -1000,
+                py: -1000,
             };
             i += 1;
         }
-        BootAnim { frame: 0, stars, cx, cy, seed, bg_top, bg_bot }
-    }
-
-    fn erase(&self, g: &Gfx, s: &Star) {
-        if s.px < -10 { return; }
-        let t = ((s.py.max(0) as u32) * 255 / g.h.max(1) as u32) as u32;
-        let bg = lerp(self.bg_top, self.bg_bot, t);
-        let r = s.size + 4;
-        g.circle(s.px, s.py, r, bg, 255);
-        let tw = s.px - 6;
-        if tw >= 0 {
-            g.rect(tw, s.py - 1, 12, 1, bg, 255);
-            g.rect(s.px - 1, s.py - 6, 1, 12, bg, 255);
+        BootAnim {
+            frame: 0,
+            parts,
+            cx,
+            cy,
+            tx,
+            ty,
+            bg_top,
+            bg_bot,
+            w,
+            h,
+            title_cleared: false,
         }
-    }
-
-    fn draw_star(&self, g: &Gfx, s: &Star, fade: u8) {
-        g.circle(s.px, s.py, s.size + 3, s.tint, fade / 6);
-        g.circle(s.px, s.py, s.size, s.tint, fade);
-        g.rect(s.px - 5, s.py, 11, 1, s.tint, fade / 3);
-        g.rect(s.px, s.py - 5, 1, 11, s.tint, fade / 3);
     }
 
     pub fn frame(&self) -> u32 {
         self.frame
     }
 
+    fn bg_at(&self, y: i32) -> u32 {
+        let t = ((y.max(0) as u32) * 255 / self.h.max(1) as u32) as u32;
+        lerp(self.bg_top, self.bg_bot, t)
+    }
+
+    fn erase(&self, g: &Gfx, x: i32, y: i32, r: i32) {
+        let c = self.bg_at(y);
+        g.circle(x, y, r, c, 255);
+    }
+
+    fn target(&self, p: &Part, f: u32) -> (f32, f32, u8) {
+        if f <= 50 {
+            let t = (f as f32 / 50.0) - p.delay;
+            let e = ease(t.max(0.0));
+            let ang = p.ang + (1.0 - e) * 1.9;
+            let rx = 142.0 * (0.86 + 0.14 * e);
+            let ry = 104.0 * (0.86 + 0.14 * e);
+            let tx = self.cx as f32 + cosf(ang) * rx;
+            let ty = self.cy as f32 + sinf(ang) * ry;
+            (p.sx + (tx - p.sx) * e, p.sy + (ty - p.sy) * e, 235)
+        } else if f <= 72 {
+            let t = ease((f - 50) as f32 / 22.0);
+            let rx = 142.0 + (5.0 - 142.0) * t;
+            let ry = 104.0 + (9.0 - 104.0) * t;
+            let ox = self.cx as f32 + ((self.tx as f32 + 56.0) - self.cx as f32) * t;
+            let oy = self.cy as f32 + ((self.ty as f32 + 16.0) - self.cy as f32) * t;
+            (
+                ox + cosf(p.ang) * rx,
+                oy + sinf(p.ang) * ry,
+                (235.0 - 90.0 * t) as u8,
+            )
+        } else {
+            let ox = self.tx as f32 + 56.0;
+            let oy = self.ty as f32 + 16.0;
+            (
+                ox + cosf(p.ang) * 5.0,
+                oy + sinf(p.ang) * 9.0,
+                150,
+            )
+        }
+    }
+
     pub fn step(&mut self, g: &Gfx) -> bool {
         self.frame += 1;
         let f = self.frame;
 
+        if f >= 73 {
+            if !self.title_cleared {
+                self.title_cleared = true;
+            }
+            let c0 = self.bg_at(self.ty);
+            g.rect(self.tx - 10, self.ty - 8, 100, 46, c0, 255);
+        }
+
         let mut i = 0;
-        while i < STARS {
-            let st = self.stars[i];
-            self.erase(g, &st);
+        while i < PARTS {
+            let p = self.parts[i];
+            if p.px > -900 {
+                self.erase(g, p.px, p.py, p.size + 3);
+            }
             i += 1;
         }
 
-        if f <= 46 {
-            let t = f as f32 / 46.0;
-            let mut i = 0;
-            while i < STARS {
-                let mut s = self.stars[i];
-                s.angle += s.speed * (1.0 + t * 2.2);
-                s.radius *= 1.0 - 0.016 * t;
-                if s.radius < 6.0 { s.radius = 6.0; }
-                s.x = self.cx as f32 + cosf(s.angle) * s.radius;
-                s.y = self.cy as f32 + sinf(s.angle) * s.radius * 0.62;
-                s.px = s.x as i32;
-                s.py = s.y as i32;
-                self.stars[i] = s;
-                let fade = 90 + (t * 120.0) as u32;
-                self.draw_star(g, &s, if fade > 255 { 255 } else { fade as u8 });
-                i += 1;
-            }
-            let t2 = f as u32;
-            if t2 > 30 {
-                let r = ((t2 - 30) * 7) as i32;
-                g.ring(self.cx, self.cy, r.min(300), 2, rgb(110, 190, 255), (140 - r / 3).max(10) as u8);
-            }
-        } else if f <= 58 {
-            let t = (f - 46) as f32 / 12.0;
-            let mut i = 0;
-            while i < STARS {
-                let mut s = self.stars[i];
-                s.angle += s.speed * 3.0;
-                s.radius *= 0.97;
-                s.x = self.cx as f32 + cosf(s.angle) * s.radius;
-                s.y = self.cy as f32 + sinf(s.angle) * s.radius * 0.62;
-                s.px = s.x as i32;
-                s.py = s.y as i32;
-                self.stars[i] = s;
-                let fade = (255.0 * (1.0 - t * 0.8)) as u8;
-                self.draw_star(g, &s, fade);
-                i += 1;
-            }
-            let r = 70 + (t * 300.0) as i32;
-            g.ring(self.cx, self.cy, r, 3, rgb(120, 220, 255), (160.0 * (1.0 - t)) as u8);
-            g.ring(self.cx, self.cy, r / 2, 2, rgb(255, 110, 190), (120.0 * (1.0 - t)) as u8);
-        } else {
-            let mut i = 0;
-            while i < STARS {
-                let s = self.stars[i];
-                self.draw_star(g, &s, 60);
-                i += 1;
-            }
-        }
-
-        if f == 47 {
-            let halo = rgb(90, 190, 255);
-            g.circle(self.cx, self.cy - 190, 120, halo, 18);
-            g.circle(self.cx, self.cy - 190, 78, rgb(120, 220, 255), 26);
-        }
-
-        if f >= 48 {
-            let mx = self.cx;
-            let w = 16 * 5;
-            let tw = w * 5;
-            let tx = mx - tw / 2;
-            let ty = self.cy - 24;
-            let bg = self.bg_bot;
-            if f == 48 {
-                g.rect(tx - 8, ty - 10, tw + 16, 62, bg, 255);
-            }
-            let a = if f < 62 { ((f - 48) * 18).min(255) as u8 } else { 255 };
-            let word = "HYWOS";
-            let mut k = 0;
-            for ch in word.bytes() {
-                let idx = if ch >= 32 && ch <= 126 { (ch - 32) as usize } else { 0 };
-                let glyph = &crate::font::FONT_16X32
-                    [idx * crate::font::FONT_16X32_BPG..(idx + 1) * crate::font::FONT_16X32_BPG];
-                let gx = tx + k * w;
-                let mut gy = 0;
-                while gy < 32 {
-                    let mut gxx = 0;
-                    while gxx < 16 {
-                        let byte = glyph[gy * 8 + gxx / 2];
-                        let nib = if gxx % 2 == 0 { byte >> 4 } else { byte & 0x0f };
-                        if nib > 0 {
-                            let aa = ((nib as u32 * 17 * a as u32) / 255) as u8;
-                            g.rect(gx + gxx as i32 * 5, ty + gy as i32 * 2, 5, 2, rgb(235, 246, 255), aa);
-                        }
-                        gxx += 1;
-                    }
-                    gy += 1;
+        let mut i = 0;
+        while i < PARTS {
+            let mut p = self.parts[i];
+            let (x, y, a) = self.target(&p, f);
+            p.x = x;
+            p.y = y;
+            p.px = x as i32;
+            p.py = y as i32;
+            self.parts[i] = p;
+            if a > 0 {
+                g.circle(p.px, p.py, p.size + 2, p.tint, a / 8);
+                g.circle(p.px, p.py, p.size, p.tint, a);
+                if f <= 72 {
+                    g.rect(p.px - 4, p.py, 9, 1, p.tint, a / 3);
+                    g.rect(p.px, p.py - 4, 1, 9, p.tint, a / 3);
                 }
-                k += 1;
             }
-            if f >= 62 {
-                let sa = ((f - 62) * 14).min(255) as u8;
-                let st = "星河 · 中文界面 · 64 位";
-                let sw = crate::gfx::text_width(st, 1);
-                g.text_a(self.cx - sw / 2, ty + 74, st, rgb(150, 210, 255), 1, sa);
-            }
+            i += 1;
+        }
+
+        if f >= 73 {
+            let alpha = |start: u32| -> u8 {
+                if f < start {
+                    0
+                } else {
+                    ((f - start) * 22).min(255) as u8
+                }
+            };
+            let c = rgb(236, 246, 255);
+            g.big_glyph(self.tx, self.ty, b'H', c, alpha(73));
+            g.big_glyph(self.tx + 16, self.ty, b'Y', c, alpha(76));
+            g.big_glyph(self.tx + 32, self.ty, b'W', c, alpha(79));
+            g.big_glyph(self.tx + 64, self.ty, b'S', c, alpha(82));
+        }
+
+        if f >= 100 {
+            let a = ((f - 100) * 20).min(255) as u8;
+            let st = "星河 · 中文界面 · 64 位";
+            let sw = crate::gfx::text_width(st, 1);
+            let sy = self.ty + 46;
+            g.rect(self.cx - sw / 2 - 4, sy - 2, sw + 8, 20, self.bg_at(sy), 255);
+            g.text_a(self.cx - sw / 2, sy, st, rgb(150, 210, 255), 1, a);
         }
 
         if f > FRAMES_TOTAL - 8 {

@@ -76,14 +76,17 @@ pub const MODE_READ: u64 = 1;
 pub const MODE_WRITE: u64 = 2;
 pub const MODE_CREATE: u64 = 0x8000_0000_0000_0000;
 pub const ATTR_DIR: u64 = 0x10;
-pub const FILEBUF_SIZE: usize = 65536;
+pub const FILEBUF_SIZE: usize = 4 * 1024 * 1024;
 pub const BMP_MAX: usize = 3 * 1024 * 1024;
 
 static mut VOLS: [*mut FileProtocol; 8] = [core::ptr::null_mut(); 8];
+static mut VOL_HANDLE: [Handle; 8] = [core::ptr::null_mut(); 8];
 static mut VOL_COUNT: usize = 0;
 static mut SYS_VOL: usize = 0;
 static mut USR_VOL: usize = 0;
+static mut BOOT_VOL: isize = -1;
 static mut RDBUF: [u8; FILEBUF_SIZE] = [0; FILEBUF_SIZE];
+static mut UPDPKG: [u8; FILEBUF_SIZE] = [0; FILEBUF_SIZE];
 static mut BMPBUF: [u8; BMP_MAX] = [0; BMP_MAX];
 static mut SHOT_NUM: u32 = 0;
 static mut BLK: *mut BlockIo = core::ptr::null_mut();
@@ -145,6 +148,7 @@ pub unsafe fn fs_init() -> usize {
             let mut root: *mut FileProtocol = core::ptr::null_mut();
             if f(fs, &mut root) == EFI_SUCCESS && !root.is_null() {
                 VOLS[count] = root;
+                VOL_HANDLE[count] = *buf.add(i);
                 count += 1;
             }
         }
@@ -200,9 +204,81 @@ pub unsafe fn fs_init() -> usize {
         USE_RAM = true;
         serial_print("[fs] no volumes, RAM fallback");
     }
+    detect_boot_volume();
     count
 }
 
+
+unsafe fn exists_raw(vol: usize, path: &str) -> bool {
+    if vol >= VOL_COUNT { return false; }
+    let f = open_on(VOLS[vol], path, MODE_READ, 0);
+    if f.is_null() {
+        false
+    } else {
+        close(f);
+        true
+    }
+}
+
+unsafe fn detect_boot_volume() {
+    BOOT_VOL = -1;
+    if VOL_COUNT == 0 { return; }
+    let dev = crate::installer::device_handle();
+    if !dev.is_null() {
+        let mut k = 0;
+        while k < VOL_COUNT {
+            if VOL_HANDLE[k] == dev {
+                BOOT_VOL = k as isize;
+                serial_print("[fs] boot volume by device handle");
+                serial_u32(k as u32);
+                return;
+            }
+            k += 1;
+        }
+    }
+    let mut k = 0;
+    while k < VOL_COUNT {
+        if exists_raw(k, "\\HYWOS\\INSTALL.TXT") {
+            BOOT_VOL = k as isize;
+            serial_print("[fs] boot volume by installed marker");
+            serial_u32(k as u32);
+            return;
+        }
+        k += 1;
+    }
+    k = 0;
+    while k < VOL_COUNT {
+        if exists_raw(k, "\\HYWOS\\CD") || exists_raw(k, "\\CDMARK.TXT") {
+            BOOT_VOL = k as isize;
+            serial_print("[fs] boot volume by install media marker");
+            serial_u32(k as u32);
+            return;
+        }
+        k += 1;
+    }
+    if SYS_VOL < VOL_COUNT { BOOT_VOL = SYS_VOL as isize; }
+}
+
+pub unsafe fn boot_vol() -> Option<usize> {
+    if BOOT_VOL >= 0 && (BOOT_VOL as usize) < VOL_COUNT {
+        Some(BOOT_VOL as usize)
+    } else {
+        None
+    }
+}
+
+pub unsafe fn open_vol(vol: usize, path: &str) -> Option<*mut FileProtocol> {
+    if vol >= VOL_COUNT { return None; }
+    let f = open_on(VOLS[vol], path, MODE_READ, 0);
+    if f.is_null() { None } else { Some(f) }
+}
+
+pub unsafe fn source_vol() -> usize {
+    match boot_vol() {
+        Some(v) => v,
+        None => SYS_VOL,
+    }
+}
 
 pub unsafe fn open_sys(path: &str) -> Option<*mut FileProtocol> {
     let f = open_on(VOLS[SYS_VOL], path, MODE_READ, 0);
@@ -242,32 +318,25 @@ pub unsafe fn read_at(f: *mut FileProtocol, off: u64, buf: &mut [u8]) -> Option<
     }
 }
 pub unsafe fn is_install_media() -> bool {
+    if let Some(v) = boot_vol() {
+        if exists_raw(v, "\\HYWOS\\INSTALL.TXT") {
+            return false;
+        }
+        return exists_raw(v, "\\HYWOS\\CD") || exists_raw(v, "\\CDMARK.TXT");
+    }
     let mut k = 0;
     while k < VOL_COUNT {
-        if exists_vol(k, "\\CDMARK.TXT") || exists_vol(k, "\\HYWOS\\CD") {
-            return true;
+        if exists_raw(k, "\\HYWOS\\INSTALL.TXT") {
+            return false;
         }
         k += 1;
     }
-    let mut buf: *mut Handle = core::ptr::null_mut();
-    let mut n: usize = 0;
-    if status_ok(bs_locate_handle_buffer(&GUID_BLOCK_IO, &mut n, &mut buf)) && !buf.is_null() {
-        let mut i = 0;
-        while i < n {
-            let mut b: *mut BlockIo = core::ptr::null_mut();
-            if status_ok(bs_handle_protocol(
-                *buf.add(i),
-                &GUID_BLOCK_IO,
-                &mut b as *mut *mut BlockIo as *mut *mut core::ffi::c_void,
-            )) && !b.is_null()
-            {
-                let m = (*b).media;
-                if !m.is_null() && (*m).present == 1 && (*m).block_size == 2048 {
-                    return true;
-                }
-            }
-            i += 1;
+    k = 0;
+    while k < VOL_COUNT {
+        if exists_raw(k, "\\HYWOS\\CD") || exists_raw(k, "\\CDMARK.TXT") {
+            return true;
         }
+        k += 1;
     }
     false
 }
@@ -314,10 +383,16 @@ pub unsafe fn read_file(vol: usize, path: &str) -> Option<usize> {
     let r: extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut u8) -> Status =
         core::mem::transmute((*f).read);
     let buf = &mut *core::ptr::addr_of_mut!(RDBUF);
-    let mut sz = buf.len();
-    let st = r(f, &mut sz, buf.as_mut_ptr());
+    let mut total = 0usize;
+    loop {
+        if total >= buf.len() { break; }
+        let mut sz = buf.len() - total;
+        let st = r(f, &mut sz, buf.as_mut_ptr().add(total));
+        if st != EFI_SUCCESS || sz == 0 { break; }
+        total += sz;
+    }
     close(f);
-    if st == EFI_SUCCESS { Some(sz) } else { None }
+    if total > 0 { Some(total) } else { None }
 }
 
 pub unsafe fn rdbuf() -> &'static mut [u8] {
@@ -332,12 +407,26 @@ pub unsafe fn write_file(vol: usize, path: &str, data: &[u8]) -> bool {
     if f.is_null() { return false; }
     let w: extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut u8) -> Status =
         core::mem::transmute((*f).write);
-    let mut sz = data.len();
-    let st = w(f, &mut sz, data.as_ptr() as *mut u8);
+    let mut done = 0usize;
+    let mut ok = true;
+    while done < data.len() {
+        let mut sz = data.len() - done;
+        let st = w(f, &mut sz, data.as_ptr().add(done) as *mut u8);
+        if st != EFI_SUCCESS || sz == 0 {
+            ok = false;
+            break;
+        }
+        done += sz;
+    }
     let fl: extern "efiapi" fn(*mut FileProtocol) -> Status = core::mem::transmute((*f).flush);
     fl(f);
     close(f);
-    st == EFI_SUCCESS
+    ok
+}
+
+pub unsafe fn replace_file(vol: usize, path: &str, data: &[u8]) -> bool {
+    let _ = delete_file(vol, path);
+    write_file(vol, path, data)
 }
 
 pub unsafe fn append_file(vol: usize, path: &str, data: &[u8]) -> bool {
@@ -363,12 +452,21 @@ pub unsafe fn append_file(vol: usize, path: &str, data: &[u8]) -> bool {
     sp(f, existing_len as u64);
     let w: extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut u8) -> Status =
         core::mem::transmute((*f).write);
-    let mut sz = data.len();
-    let st = w(f, &mut sz, data.as_ptr() as *mut u8);
+    let mut done = 0usize;
+    let mut ok = true;
+    while done < data.len() {
+        let mut sz = data.len() - done;
+        let st = w(f, &mut sz, data.as_ptr().add(done) as *mut u8);
+        if st != EFI_SUCCESS || sz == 0 {
+            ok = false;
+            break;
+        }
+        done += sz;
+    }
     let fl: extern "efiapi" fn(*mut FileProtocol) -> Status = core::mem::transmute((*f).flush);
     fl(f);
     close(f);
-    st == EFI_SUCCESS
+    ok
 }
 
 pub unsafe fn delete_file(vol: usize, path: &str) -> bool {
@@ -896,11 +994,8 @@ pub unsafe fn parse_updpkg(data: &[u8]) -> UpdateInfo {
     let plen = u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as usize;
     let lba = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
     let crc = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
-    if 32 + plen > data.len() || plen == 0 || plen > 32 * 1024 { return info; }
-    let mut payload = [0u8; 32 * 1024];
-    let mut k = 0;
-    while k < plen { payload[k] = data[32 + k]; k += 1; }
-    let got = bs_crc32(payload.as_mut_ptr(), plen);
+    if 32 + plen > data.len() || plen == 0 || plen > 4 * 1024 * 1024 { return info; }
+    let got = bs_crc32(data.as_ptr().add(32) as *mut u8, plen);
     info.valid = true;
     info.version = ver;
     info.payload_len = plen;
@@ -913,10 +1008,50 @@ pub unsafe fn apply_update(data: &[u8]) -> u8 {
     let info = parse_updpkg(data);
     if !info.valid { return 1; }
     if !info.crc_ok { return 2; }
-    let mut payload = [0u8; 32 * 1024];
-    let mut k = 0;
-    while k < info.payload_len { payload[k] = data[32 + k]; k += 1; }
-    if write_lba(info.lba as u64, &payload[..info.payload_len]) { 0 } else { 3 }
+    let payload = &data[info.payload_off..info.payload_off + info.payload_len];
+    let v = match boot_vol() {
+        Some(b) if !is_install_media() => b,
+        _ => SYS_VOL,
+    };
+    let old_len = read_file(v, "\\EFI\\BOOT\\BOOTX64.EFI");
+    let updated = if replace_file(v, "\\EFI\\BOOT\\BOOTX64.EFI", payload) {
+        true
+    } else if let Some(n) = old_len {
+        let old = rdbuf();
+        write_file(v, "\\EFI\\BOOT\\BOOTX64.EFI", &old[..n])
+    } else {
+        false
+    };
+    if !updated && old_len.is_some() {
+        return 3;
+    }
+    if updated {
+        let mut vb = [0u8; 32];
+        let mut l = 0;
+        for c in "HYWOS ".as_bytes().iter() { vb[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut vb[l..], info.version / 10000, 1);
+        vb[l] = b'.'; l += 1;
+        l += crate::hw::num2(&mut vb[l..], (info.version / 100) % 100, 1);
+        vb[l] = b'.'; l += 1;
+        l += crate::hw::num2(&mut vb[l..], info.version % 100, 1);
+        vb[l] = b'\n'; l += 1;
+        let _ = write_file(v, "\\HYWOS\\VERSION", &vb[..l]);
+        return 0;
+    }
+    if write_lba(info.lba as u64, payload) { 0 } else { 3 }
+}
+
+pub unsafe fn apply_update_file(vol: usize, path: &str) -> u8 {
+    let n = match read_file(vol, path) {
+        Some(n) => n,
+        None => return 4,
+    };
+    let src = rdbuf();
+    let dst = &mut *core::ptr::addr_of_mut!(UPDPKG);
+    let l = if n < dst.len() { n } else { dst.len() };
+    let mut i = 0;
+    while i < l { dst[i] = src[i]; i += 1; }
+    apply_update(&dst[..l])
 }
 
 pub static mut USE_RAM: bool = false;
@@ -1029,7 +1164,7 @@ pub unsafe fn ram_read(path: &str) -> Option<usize> {
     let l = if len < dst.len() { len } else { dst.len() };
     let mut k = 0;
     while k < l { dst[k] = src[off + k]; k += 1; }
-    Some(len)
+    Some(l)
 }
 
 pub unsafe fn ram_delete(path: &str) -> bool {

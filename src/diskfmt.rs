@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::efi::*;
-use crate::fs::{BlockIo, BlockIoMedia};
+use crate::fs::BlockIo;
 use core::ffi::c_void;
 
 pub const PART_START: u64 = 2048;
@@ -454,4 +454,224 @@ pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: us
 
 pub unsafe fn target_info(t: &Target) -> (u64, u64) {
     (t.blocks * 512 / (1024 * 1024), t.part_secs * 512 / (1024 * 1024))
+}
+
+pub const DIR_ROOT: u16 = 0;
+pub const DIR_EFI: u16 = 2;
+pub const DIR_BOOT: u16 = 3;
+pub const DIR_HYWOS: u16 = 4;
+pub const DIR_SYSTEM: u16 = 5;
+const FIRST_FILE_CLUSTER: u16 = 6;
+const MAX_FILES: usize = 12;
+
+pub struct SystemFile<'a> {
+    pub dir: u16,
+    pub name: [u8; 11],
+    pub size: usize,
+    pub src: *mut crate::fs::FileProtocol,
+    pub data: &'a [u8],
+}
+
+fn clusters_for(size: usize) -> u32 {
+    if size == 0 { 0 } else { ((size + 4095) / 4096) as u32 }
+}
+
+unsafe fn write_cluster_dir(t: &Target, cluster: u16, entries: &[(&[u8; 11], bool, u16, u32)], parent: u16) -> bool {
+    let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
+    clear(clus, 4096);
+    dir_item(clus, 0, b".          ", 0x10, cluster, 0);
+    dir_item(clus, 1, b"..         ", 0x10, parent, 0);
+    let mut idx = 2usize;
+    for (name, is_dir, c, size) in entries.iter() {
+        dir_item(clus, idx, name, if *is_dir { 0x10 } else { 0x20 }, *c, *size);
+        idx += 1;
+    }
+    wr(t, PART_START + DATA_START as u64 + (cluster as u64 - 2) * SPC as u64, clus, 4096)
+}
+
+pub unsafe fn install_system(t: &Target, files: &[SystemFile], cb: ProgFn) -> bool {
+    if files.len() > MAX_FILES { return false; }
+    let mut cluster_of = [0u16; MAX_FILES];
+    let mut total_data_clusters = 0u32;
+    let mut cur = FIRST_FILE_CLUSTER;
+    let mut i = 0;
+    while i < files.len() {
+        let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+        let n = clusters_for(size);
+        cluster_of[i] = if n == 0 { 0 } else { cur };
+        if n > 0 {
+            total_data_clusters += n;
+            cur = cur.wrapping_add(n as u16);
+        }
+        i += 1;
+    }
+    let last_cluster = FIRST_FILE_CLUSTER as u32 - 1 + total_data_clusters;
+    if last_cluster >= MAX_CLUSTERS {
+        return false;
+    }
+    let needed_secs = DATA_START as u64 + (last_cluster as u64 - 1) * SPC as u64;
+    if needed_secs > t.part_secs {
+        return false;
+    }
+    let total_bytes: usize = {
+        let mut s = 0usize;
+        let mut k = 0;
+        while k < files.len() {
+            s += if files[k].src.is_null() { files[k].data.len() } else { files[k].size };
+            k += 1;
+        }
+        s
+    };
+    let mut copied = 0usize;
+    cb(4);
+    let chunk = core::ptr::addr_of_mut!(CHUNK) as *mut u8;
+    let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
+    i = 0;
+    while i < files.len() {
+        let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+        let mut cluster = cluster_of[i];
+        let mut off = 0usize;
+        while off < size {
+            clear(clus, 4096);
+            let got: usize;
+            if files[i].src.is_null() {
+                let take = if size - off < 4096 { size - off } else { 4096 };
+                let mut k = 0;
+                while k < take {
+                    *clus.add(k) = files[i].data[off + k];
+                    k += 1;
+                }
+                got = take;
+            } else {
+                let want = if size - off < 4096 { size - off } else { 4096 };
+                let r = match crate::fs::read_at(files[i].src, off as u64, core::slice::from_raw_parts_mut(chunk, want)) {
+                    Some(n) => n,
+                    None => return false,
+                };
+                if r == 0 { break; }
+                let mut k = 0;
+                while k < r {
+                    *clus.add(k) = *chunk.add(k);
+                    k += 1;
+                }
+                got = r;
+            }
+            if !wr(t, PART_START + DATA_START as u64 + (cluster as u64 - 2) * SPC as u64, clus, 4096) {
+                return false;
+            }
+            off += got;
+            copied += got;
+            cluster = cluster + 1;
+            let pct = 8 + (copied * 64 / if total_bytes == 0 { 1 } else { total_bytes }) as u32;
+            cb(if pct > 74 { 74 } else { pct });
+        }
+        i += 1;
+    }
+    cb(76);
+    let fat = core::ptr::addr_of_mut!(FATBUF) as *mut u8;
+    clear(fat, 65536);
+    put16(fat, 0, 0xFFF8);
+    put16(fat, 2, 0xFFFF);
+    let mut c = 2u16;
+    while c <= DIR_SYSTEM {
+        put16(fat, c as usize * 2, 0xFFFF);
+        c += 1;
+    }
+    i = 0;
+    while i < files.len() {
+        let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+        let n = clusters_for(size);
+        let start = cluster_of[i];
+        let mut k = 0u32;
+        while k + 1 < n {
+            put16(fat, (start as u32 + k) as usize * 2, (start as u32 + k + 1) as u16);
+            k += 1;
+        }
+        if n > 0 {
+            put16(fat, (start as u32 + n - 1) as usize * 2, 0xFFFF);
+        }
+        i += 1;
+    }
+    if !wr(t, PART_START + 1, fat, 65536) {
+        return false;
+    }
+    if !wr(t, PART_START + 1 + FAT_SECS as u64, fat, 65536) {
+        return false;
+    }
+    let root = core::ptr::addr_of_mut!(ROOTBUF) as *mut u8;
+    clear(root, 16384);
+    dir_item(root, 0, b"EFI        ", 0x10, DIR_EFI, 0);
+    dir_item(root, 1, b"HYWOS      ", 0x10, DIR_HYWOS, 0);
+    let mut root_idx = 2usize;
+    i = 0;
+    while i < files.len() {
+        if files[i].dir == DIR_ROOT {
+            let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+            dir_item(root, root_idx, &files[i].name, 0x20, cluster_of[i], size as u32);
+            root_idx += 1;
+        }
+        i += 1;
+    }
+    if !wr(t, PART_START + ROOT_SEC_START as u64, root, 16384) {
+        return false;
+    }
+    cb(82);
+    let efi_entries: [(&[u8; 11], bool, u16, u32); 1] = [(b"BOOT       ", true, DIR_BOOT, 0)];
+    if !write_cluster_dir(t, DIR_EFI, &efi_entries, 0) { return false; }
+    let mut boot_names: [(&[u8; 11], bool, u16, u32); MAX_FILES] = [(b"           ", false, 0, 0); MAX_FILES];
+    let mut bn = 0usize;
+    i = 0;
+    while i < files.len() {
+        if files[i].dir == DIR_BOOT {
+            let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+            boot_names[bn] = (&files[i].name, false, cluster_of[i], size as u32);
+            bn += 1;
+        }
+        i += 1;
+    }
+    if !write_cluster_dir(t, DIR_BOOT, &boot_names[..bn], DIR_EFI) { return false; }
+    let hywos_entries: [(&[u8; 11], bool, u16, u32); 1] = [(b"SYSTEM     ", true, DIR_SYSTEM, 0)];
+    {
+        let mut all: [(&[u8; 11], bool, u16, u32); MAX_FILES + 1] = [(b"           ", false, 0, 0); MAX_FILES + 1];
+        all[0] = hywos_entries[0];
+        let mut n = 1usize;
+        i = 0;
+        while i < files.len() {
+            if files[i].dir == DIR_HYWOS {
+                let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+                all[n] = (&files[i].name, false, cluster_of[i], size as u32);
+                n += 1;
+            }
+            i += 1;
+        }
+        if !write_cluster_dir(t, DIR_HYWOS, &all[..n], 0) { return false; }
+    }
+    let mut sys_names: [(&[u8; 11], bool, u16, u32); MAX_FILES] = [(b"           ", false, 0, 0); MAX_FILES];
+    let mut sn = 0usize;
+    i = 0;
+    while i < files.len() {
+        if files[i].dir == DIR_SYSTEM {
+            let size = if files[i].src.is_null() { files[i].data.len() } else { files[i].size };
+            sys_names[sn] = (&files[i].name, false, cluster_of[i], size as u32);
+            sn += 1;
+        }
+        i += 1;
+    }
+    if !write_cluster_dir(t, DIR_SYSTEM, &sys_names[..sn], DIR_HYWOS) { return false; }
+    cb(90);
+    build_bpb(t.part_secs);
+    let bpb = core::ptr::addr_of_mut!(BPB) as *mut u8;
+    if !wr(t, PART_START, bpb, 512) {
+        return false;
+    }
+    cb(95);
+    build_mbr(t.bs, t.part_secs);
+    let mbr = core::ptr::addr_of_mut!(MBR) as *mut u8;
+    if !wr(t, 0, mbr, 512) {
+        return false;
+    }
+    let fl: extern "efiapi" fn(*mut BlockIo) -> Status = core::mem::transmute((*t.bio).flush);
+    fl(t.bio);
+    cb(100);
+    true
 }

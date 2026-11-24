@@ -1,4 +1,4 @@
-# HYWOS 1.0.6 «星河 · 安装进度版»
+# HYWOS 1.0.7 «星河 · 安装与在线更新版»
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
@@ -12,6 +12,7 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 
 ## 目录
 
+- [1.0.7 新变化](#107-新变化)
 - [1.0.2 新变化](#102-新变化)
 - [硬件驱动](#硬件驱动)
 - [特性总览](#特性总览)
@@ -29,6 +30,16 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 - [设计说明](#设计说明)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
+
+## 1.0.7 新变化
+
+- **修复安装后仍进入安装程序**：安装介质判定改为只看当前启动卷，
+  并在硬盘写入 `\HYWOS\INSTALL.TXT`。从硬盘启动时不会再被 ISO 残留设备误判。
+- **安装流程重写**：ISO 启动先询问是否安装；确认后先把内核、系统资源、
+  版本文件与安装标记**全部复制到本地磁盘**，最后才创建 FAT16 引导分区与 MBR 引导记录。
+- **设置中新增在线更新**：读取 GitHub Releases 列表，与本地版本 1.0.7 比较；
+  发现新版本可下载 `.updpkg` 并应用，支持离线 `\updates\latest.json` 回退。
+- 版本号升级到 1.0.7。
 
 ## 1.0.6 新变化
 
@@ -65,11 +76,13 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 
 1. 为虚拟机/机器准备一块 **≥100MB 的可写磁盘**（安装器会写入 128MB 分区）。
 2. 使用 `hywos.iso` 启动，进入命令行安装程序，界面会显示目标磁盘容量。
-3. 直接按 **Enter** 确认（按 `N` 取消），安装器依次执行：
-   - 写入 MBR 分区表（type 0x0E，起始 LBA 2048）；
-   - 创建 FAT16 引导分区（128MB，簇 4KB）；
-   - 创建 `\EFI\BOOT` 目录并复制 `BOOTX64.EFI`；
+3. 直接按 **Enter** 确认（按 `N` 取消）。安装器按以下顺序执行：
+   - 先复制全部系统文件到本地磁盘：`BOOTX64.EFI`、`\HYWOS\SYSTEM\WELCOME.TXT`、
+     `\HYWOS\VERSION` 与安装标记 `\HYWOS\INSTALL.TXT`；
+   - 目录与 FAT 表写入完成后，再创建 FAT16 引导分区（128MB，簇 4KB）
+     并写入 MBR 引导记录（type 0x0E，起始 LBA 2048）；
 4. 看到「安装完成」后关闭虚拟机，**移除 ISO**，从硬盘启动。
+   硬盘上的安装标记会阻止再次进入安装程序。
 
 如果提示「未找到可安装的硬盘」，界面会列出固件检测到的所有块设备，
 请确认磁盘 ≥20MB、可写、块大小 512 字节。
@@ -139,7 +152,7 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 | 应用 | 终端、文件、设置、天气、应用商店、关于本机 |
 | 多核 | ACPI MADT + CPUID 拓扑，QEMU 中实测 `4 核` |
 | 存储 | UEFI SimpleFileSystem；无可写卷时内存文件系统回退 |
-| 更新 | CONLYUPD 包，CRC32 校验，LBA 64 内核区写入 |
+| 更新 | GitHub Releases 在线检查 + CONLYUPD 包，CRC32 校验，内核文件替换 |
 | 截屏 | F12 / Print Screen，24 位 BMP，编号递增 |
 
 ## 界面截图
@@ -233,8 +246,15 @@ F12 / Print Screen 抓取 24 位 BMP，编号递增，状态栏提示；
 
 ## 软件更新 .updpkg
 
-`CONLYUPD` 头 + CRC32，Files 双击打开 `设置 → 软件更新`，只写目标 LBA（默认 64），
-不触碰用户卷。
+`CONLYUPD` 头 + CRC32，Files 双击打开 `设置 → 软件更新`。更新包可携带完整内核，
+应用时替换 `\EFI\BOOT\BOOTX64.EFI` 并更新 `\HYWOS\VERSION`；不支持文件替换的旧设备
+回退到目标 LBA（默认 64），不触碰用户数据卷。
+
+`设置 → 软件更新 → 检查更新` 会请求 GitHub Releases 列表
+（`https://api.github.com/repos/lmxdg/HYWOS/releases`），解析 `tag_name`
+并与本地 1.0.7 比较。发现新版本后可从 `browser_download_url` 下载 `.updpkg`，
+保存到 `\updates\hywos-<版本>.updpkg` 后应用。固件没有 HTTP/TLS 服务或网络
+未配置时，会读取 `\updates\latest.json` 并扫描 `\updates` 中的更新包作为离线回退。
 
 ## 构建
 
@@ -252,7 +272,7 @@ python3 tools/gen_logo_data.py
 ```
 
 产物：`build/hywos.iso`、`build/efiboot.img`、`build/usb.img`、
-`build/kdisk.img`、`build/hywos-1.0.1.updpkg`。
+`build/kdisk.img`、`build/hywos-1.0.7.updpkg`。
 
 ## 在 QEMU 中运行
 

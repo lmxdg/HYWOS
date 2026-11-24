@@ -32,7 +32,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.0.6 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.0.7 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -202,7 +202,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.0.0 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.0.7 x86_64 UEFI (Rust no_std kernel)"),
             "ps" => {
                 self.print("  PID  CORE  STATE  NAME");
                 self.print("    1     0  run    init");
@@ -310,6 +310,11 @@ pub struct Settings {
     pub msg_ok: bool,
     pub pending: [u8; 80],
     pub pending_len: usize,
+    pub update_state: u8,
+    pub release: crate::updater::Release,
+    pub update_msg: [u8; 96],
+    pub update_msg_len: usize,
+    pub update_ok: bool,
 }
 
 pub struct Weather {
@@ -406,6 +411,10 @@ pub unsafe fn init_state(st: &mut AppState, id: AppId) {
     st.settings.msg_len = 0;
     st.settings.msg_ok = false;
     st.settings.pending_len = 0;
+    st.settings.update_state = 0;
+    st.settings.release = crate::updater::Release::empty();
+    st.settings.update_msg_len = 0;
+    st.settings.update_ok = false;
     st.weather.city = 0;
     st.weather.day = 0;
     st.weather.frame = 0;
@@ -689,18 +698,55 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 38, "包格式 CONLYUPD · CRC32 校验", rgb(132, 140, 158), 1);
-            g.text(cx, cy + 62, "只写入 LBA 64 内核区，不动用户数据", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.0.7 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            let by = cy + 58;
+            btn(g, cx, by, 140, 34, "检查更新", true);
+            let can_dl = s.update_state == 2;
+            btn(g, cx + 152, by, 160, 34, if can_dl { "下载并安装" } else { "等待检查" }, can_dl);
+            let status = match s.update_state {
+                1 => "已是最新版本",
+                2 => "发现新版本，可下载并安装",
+                3 => "检查失败：无网络或固件未提供 HTTP/TLS",
+                4 => "更新已写入，重启后生效",
+                _ => "尚未检查更新",
+            };
+            g.text(cx, cy + 104, status, if s.update_state == 3 { rgb(192, 72, 68) } else { rgb(50, 56, 72) }, 1);
+            if s.update_state == 2 {
+                let mut vb = [0u8; 24];
+                let vl = s.release.version_str(&mut vb);
+                g.text(cx, cy + 124, core::str::from_utf8_unchecked(&vb[..vl]), rgb(36, 160, 88), 2);
+                let mut u = [0u8; 80];
+                let mut ul = 0;
+                if s.release.url_len > 0 {
+                    let prefix = if s.release.url[0] == b'\\' { "本地包：" } else { "下载源：" };
+                    for c in prefix.bytes() { if ul < 40 { u[ul] = c; ul += 1; } }
+                    let mut k = 0;
+                    while k < s.release.url_len && ul < 58 {
+                        u[ul] = s.release.url[k];
+                        ul += 1;
+                        k += 1;
+                    }
+                }
+                if ul > 0 {
+                    g.text(cx, cy + 152, core::str::from_utf8_unchecked(&u[..ul]), rgb(118, 128, 148), 1);
+                }
+            }
+            if s.update_msg_len > 0 {
+                let m = core::str::from_utf8_unchecked(&s.update_msg[..s.update_msg_len]);
+                g.text(cx, cy + 174, m, if s.update_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
+            }
+            g.rect(cx, cy + 198, w - side - 52, 1, rgb(214, 222, 236), 200);
+            g.text(cx, cy + 208, "本地更新包（.updpkg）", rgb(36, 42, 58), 1);
             let p = if s.pending_len > 0 {
                 core::str::from_utf8_unchecked(&s.pending[..s.pending_len])
             } else {
-                "（尚未选择更新包）"
+                "（尚未选择本地更新包）"
             };
-            g.round_rect(cx - 8, cy + 90, w - side - 52, 26, 7, rgb(232, 238, 248), 200);
-            g.text(cx, cy + 96, p, rgb(50, 56, 72), 1);
-            btn(g, cx, cy + 128, 150, 34, "应用更新", true);
-            btn(g, cx + 166, cy + 128, 150, 34, "检查设备", false);
-            let mut dev = [0u8; 48];
+            g.round_rect(cx - 8, cy + 226, w - side - 52, 26, 7, rgb(232, 238, 248), 200);
+            g.text(cx, cy + 232, p, rgb(50, 56, 72), 1);
+            btn(g, cx, cy + 262, 140, 34, "应用本地包", true);
+            btn(g, cx + 152, cy + 262, 160, 34, "检查设备", false);
+            let mut dev = [0u8; 56];
             let mut dl = 0;
             match block_info() {
                 Some((blocks, bs)) => {
@@ -713,12 +759,14 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
                     for c in "内核设备：未发现可写块设备".as_bytes().iter() { dev[dl] = *c; dl += 1; }
                 }
             }
-            g.text(cx, cy + 190, core::str::from_utf8_unchecked(&dev[..dl]), rgb(118, 128, 148), 1);
+            g.text(cx, cy + 308, core::str::from_utf8_unchecked(&dev[..dl]), rgb(118, 128, 148), 1);
+            g.text(cx, cy + 334, "在线检测 GitHub Releases", rgb(150, 158, 176), 1);
+            g.text(cx, cy + 356, "离线回退 \\updates\\latest.json", rgb(150, 158, 176), 1);
+            g.text(cx, cy + 378, "更新只替换内核文件，用户数据保留", rgb(150, 158, 176), 1);
             if s.msg_len > 0 {
                 let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
-                g.text(cx, cy + 220, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
+                g.text(cx, cy + 404, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
-            g.text(cx, cy + 264, "用户文件、应用与设置始终保留", rgb(150, 158, 176), 1);
         }
         _ => draw_about(g, x + side + 16, top, w - side - 26, h - HEADER_H - 24),
     }
@@ -810,11 +858,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.0.6", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "星河版 · 版本 1.0.7", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.0.6（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.0.7（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     g.text(vx, ry, "x86_64 · ACPI / CPUID 拓扑", rgb(68, 78, 98), 1);
@@ -889,41 +937,23 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
                 }
             } else if st.settings.page == 2 {
                 let cx = side + 26;
-                if ly > top + 120 && ly < top + 160 && lx > cx && lx < cx + 170 {
-                    if st.settings.pending_len > 0 {
-                        let mut pathbuf = [0u8; 84];
-                        let pl = st.settings.pending_len;
-                        let mut i = 0;
-                        while i < pl { pathbuf[i] = st.settings.pending[i]; i += 1; }
-                        let p = core::str::from_utf8_unchecked(&pathbuf[..pl]);
-                        let res = match read_file(usr_vol(), p) {
-                            Some(n) => {
-                                let buf = rdbuf();
-                                let mut tmp = [0u8; 33000];
-                                let l = if n < 33000 { n } else { 33000 };
-                                let mut i = 0;
-                                while i < l { tmp[i] = buf[i]; i += 1; }
-                                apply_update(&tmp[..l])
-                            }
-                            None => 4,
-                        };
-                        let msg: &str = match res {
-                            0 => "Update applied to LBA 64. Reboot to use it.",
-                            1 => "Invalid CONLYUPD header.",
-                            2 => "CRC32 mismatch. Update rejected.",
-                            3 => "No writable kernel block device.",
-                            _ => "Package not found on the user volume.",
-                        };
-                        st.settings.msg_len = msg.len().min(70);
-                        let mut i = 0;
-                        for c in msg.bytes() { if i < 70 { st.settings.msg[i] = c; i += 1; } }
-                        st.settings.msg_ok = res == 0;
-                    }
+                let by = top + 64;
+                if ly > by && ly < by + 38 && lx > cx && lx < cx + 140 {
+                    do_check_update(&mut st.settings);
                     return AppAction::None;
                 }
-                if ly > top + 120 && ly < top + 160 && lx > cx + 180 && lx < cx + 340 {
+                if ly > by && ly < by + 38 && lx > cx + 152 && lx < cx + 312 {
+                    do_download_update(&mut st.settings);
+                    return AppAction::None;
+                }
+                let ay = top + 268;
+                if ly > ay && ly < ay + 38 && lx > cx && lx < cx + 140 {
+                    apply_pending(&mut st.settings);
+                    return AppAction::None;
+                }
+                if ly > ay && ly < ay + 38 && lx > cx + 152 && lx < cx + 312 {
                     let b = find_block_device();
-                    let msg = if b.is_null() { "No writable block device found." } else { "Writable kernel device detected." };
+                    let msg = if b.is_null() { "未发现可写块设备。" } else { "已检测到可写内核设备。" };
                     st.settings.msg_len = msg.len();
                     let mut i = 0;
                     for c in msg.bytes() { st.settings.msg[i] = c; i += 1; }
@@ -1044,6 +1074,116 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
         st.weather.unit_f = !st.weather.unit_f;
     }
     AppAction::None
+}
+
+unsafe fn set_update_msg(s: &mut Settings, ok: bool, msg: &str) {
+    s.update_msg_len = 0;
+    s.update_ok = ok;
+    for c in msg.bytes() {
+        if s.update_msg_len < s.update_msg.len() - 1 {
+            s.update_msg[s.update_msg_len] = c;
+            s.update_msg_len += 1;
+        }
+    }
+}
+
+unsafe fn do_check_update(s: &mut Settings) {
+    match crate::updater::check_update() {
+        crate::updater::Check::Latest(_a, _b, _c) => {
+            s.update_state = 1;
+            set_update_msg(s, true, "已是最新版本 1.0.7");
+        }
+        crate::updater::Check::Available(r) => {
+            s.release = r;
+            s.update_state = 2;
+            let mut vb = [0u8; 24];
+            let vl = r.version_str(&mut vb);
+            let ver = core::str::from_utf8_unchecked(&vb[..vl]);
+            let mut buf = [0u8; 64];
+            let mut l = 0;
+            for c in "发现新版本 ".bytes() { buf[l] = c; l += 1; }
+            for c in ver.bytes() { if l < 60 { buf[l] = c; l += 1; } }
+            set_update_msg(s, true, core::str::from_utf8_unchecked(&buf[..l]));
+        }
+        crate::updater::Check::Error(_e) => {
+            s.update_state = 3;
+            set_update_msg(s, false, "检查失败：无网络或固件未提供 HTTP/TLS");
+        }
+    }
+}
+
+unsafe fn do_download_update(s: &mut Settings) {
+    if s.update_state != 2 {
+        return;
+    }
+    let r = s.release;
+    if r.url_len == 0 {
+        set_update_msg(s, false, "该版本没有 .updpkg 更新包");
+        return;
+    }
+    s.pending_len = 0;
+    if r.url[0] != b'\\' {
+        for c in "\\updates\\hywos-".bytes() {
+            if s.pending_len < 76 { s.pending[s.pending_len] = c; s.pending_len += 1; }
+        }
+        let mut vb = [0u8; 24];
+        let vl = r.version_str(&mut vb);
+        let mut i = 0;
+        while i < vl && s.pending_len < 78 {
+            s.pending[s.pending_len] = vb[i];
+            s.pending_len += 1;
+            i += 1;
+        }
+        for c in ".updpkg".bytes() {
+            if s.pending_len < 79 { s.pending[s.pending_len] = c; s.pending_len += 1; }
+        }
+    } else {
+        let mut i = 0;
+        while i < r.url_len && s.pending_len < 79 {
+            s.pending[s.pending_len] = r.url[i];
+            s.pending_len += 1;
+            i += 1;
+        }
+    }
+    let code = crate::updater::download_and_apply(&r);
+    let msg: &str = match code {
+        0 => {
+            s.update_state = 4;
+            "更新成功：已写入内核区，重启后生效"
+        }
+        1 => "更新包头无效",
+        2 => "CRC32 校验失败，已拒绝",
+        3 => "未找到可写内核块设备",
+        10 => "该版本没有 .updpkg 更新包",
+        11 => "本地更新包读取失败",
+        12 => "更新包保存到本地失败",
+        _ => "网络下载失败，请检查连接",
+    };
+    set_update_msg(s, code == 0, msg);
+}
+
+unsafe fn apply_pending(s: &mut Settings) {
+    if s.pending_len == 0 {
+        s.msg_len = 0;
+        return;
+    }
+    let mut pathbuf = [0u8; 84];
+    let pl = s.pending_len;
+    let mut i = 0;
+    while i < pl { pathbuf[i] = s.pending[i]; i += 1; }
+    let p = core::str::from_utf8_unchecked(&pathbuf[..pl]);
+    let res = apply_update_file(usr_vol(), p);
+    let msg: &str = match res {
+        0 => "更新已写入内核区，请重启",
+        1 => "更新包头无效",
+        2 => "CRC32 校验失败，已拒绝",
+        3 => "未找到可写内核块设备",
+        _ => "用户卷中未找到更新包",
+    };
+    s.msg_len = msg.len().min(70);
+    let mut i = 0;
+    for c in msg.bytes() { if i < 70 { s.msg[i] = c; i += 1; } }
+    s.msg_ok = res == 0;
 }
 
 pub unsafe fn select_update(st: &mut AppState, name: &str) {

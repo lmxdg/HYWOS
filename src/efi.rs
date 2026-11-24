@@ -33,6 +33,9 @@ pub const GUID_ACPI20_TABLE: Guid = Guid::new(0x8868e871, 0xe4f1, 0x11d3, [0xbc,
 pub const GUID_ACPI10_TABLE: Guid = Guid::new(0xeb9d2d30, 0x2d88, 0x11d3, [0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d]);
 pub const GUID_DEVICE_PATH: Guid = Guid::new(0x09576e91, 0x6d3f, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
 pub const GUID_FILE_INFO: Guid = Guid::new(0x09576e92, 0x6d3f, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
+pub const GUID_HTTP_SERVICE_BINDING: Guid = Guid::new(0xbdc8e6af, 0xd9bc, 0x4379, [0xa7, 0x2a, 0xe0, 0xc4, 0xe7, 0x5d, 0xae, 0x1c]);
+pub const GUID_HTTP_PROTOCOL: Guid = Guid::new(0x7a59b29b, 0x910b, 0x4171, [0x82, 0x42, 0xa8, 0x5a, 0x0d, 0xf2, 0x5b, 0x5b]);
+pub const GUID_IP4_CONFIG2: Guid = Guid::new(0x5b446ed1, 0xe30b, 0x4faa, [0x87, 0x1a, 0x36, 0x54, 0xec, 0xa3, 0x60, 0x80]);
 
 #[repr(C)]
 pub struct TableHeader {
@@ -126,6 +129,45 @@ unsafe fn bs_slot(idx: usize) -> *mut c_void {
 pub unsafe fn bs_stall(us: usize) {
     let f: extern "efiapi" fn(usize) = core::mem::transmute(bs_slot(28));
     f(us);
+}
+
+pub unsafe fn bs_create_event(kind: u32, notify: *mut c_void, ctx: *mut c_void, out: *mut *mut c_void) -> Status {
+    let f: extern "efiapi" fn(u32, *mut c_void, *mut c_void, *mut *mut c_void) -> Status =
+        core::mem::transmute(bs_slot(7));
+    f(kind, notify, ctx, out)
+}
+
+pub unsafe fn bs_check_event(event: *mut c_void) -> Status {
+    let f: extern "efiapi" fn(*mut c_void) -> Status = core::mem::transmute(bs_slot(12));
+    f(event)
+}
+
+pub unsafe fn bs_close_event(event: *mut c_void) {
+    let f: extern "efiapi" fn(*mut c_void) -> Status = core::mem::transmute(bs_slot(11));
+    let _ = f(event);
+}
+
+pub unsafe fn bs_connect_all_network() {
+    let mut buf: *mut Handle = core::ptr::null_mut();
+    let mut n: usize = 0;
+    if status_ok(bs_locate_handle_buffer(&GUID_SIMPLE_NETWORK, &mut n, &mut buf)) && !buf.is_null() {
+        let mut i = 0;
+        while i < n {
+            bs_connect_controller(*buf.add(i));
+            i += 1;
+        }
+        bs_free_pool(buf as *mut u8);
+    }
+    let mut n2: usize = 0;
+    let mut buf2: *mut Handle = core::ptr::null_mut();
+    if status_ok(bs_locate_handle_buffer(&GUID_DEVICE_PATH, &mut n2, &mut buf2)) && !buf2.is_null() {
+        let mut i = 0;
+        while i < n2 {
+            bs_connect_controller(*buf2.add(i));
+            i += 1;
+        }
+        bs_free_pool(buf2 as *mut u8);
+    }
 }
 
 pub unsafe fn bs_copy_mem(dest: *mut c_void, src: *const c_void, n: usize) {

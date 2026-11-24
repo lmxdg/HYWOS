@@ -198,7 +198,7 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redi
         bs_close_event(ev_req);
         return Err(ERR_REQUEST);
     }
-    if !wait_event(ev_req, http, 15_000) || !status_ok(tok.status) {
+    if !wait_event(ev_req, http, 8_000) || !status_ok(tok.status) {
         bs_close_event(ev_req);
         return Err(ERR_REQUEST);
     }
@@ -227,7 +227,7 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redi
         bs_close_event(ev_rsp);
         return Err(ERR_RESPONSE);
     }
-    if !wait_event(ev_rsp, http, 20_000) || !status_ok(tok2.status) {
+    if !wait_event(ev_rsp, http, 12_000) || !status_ok(tok2.status) {
         free_headers(&mut msg2);
         if !msg2.body.is_null() { bs_free_pool(msg2.body as *mut u8); }
         bs_close_event(ev_rsp);

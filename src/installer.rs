@@ -136,6 +136,8 @@ unsafe fn show_diag(g: &Gfx) {
         l += crate::hw::num2(&mut b[l..], d.ro as u32, 1);
         for c in " · 分区 ".as_bytes() { b[l] = *c; l += 1; }
         l += crate::hw::num2(&mut b[l..], d.logical as u32, 1);
+        for c in " · 就绪 ".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], d.present as u32, 1);
         g.text(64, y, core::str::from_utf8_unchecked(&b[..l]), rgb(160, 180, 210), 2);
         y += 44;
         i += 1;
@@ -143,7 +145,15 @@ unsafe fn show_diag(g: &Gfx) {
 }
 
 pub unsafe fn run(g: &Gfx) -> ! {
-    let t = match diskfmt::pick_target() {
+    let mut probe = diskfmt::pick_target();
+    let mut tries = 0;
+    while probe.is_none() && tries < 3 {
+        bs_connect_all_storage();
+        bs_stall(300_000);
+        probe = diskfmt::pick_target();
+        tries += 1;
+    }
+    let t = match probe {
         Some(t) => t,
         None => {
             screen_msg(

@@ -12,6 +12,7 @@ const SPC: u32 = 8;
 const ROOT_SEC_START: u32 = 1 + FAT_SECS * 2;
 const DATA_START: u32 = ROOT_SEC_START + ROOT_SECS;
 const MAX_CLUSTERS: u32 = 32760;
+const MIN_CAP_512: u64 = 40_960;
 
 #[repr(C, align(512))]
 struct Align512([u8; 512]);
@@ -25,30 +26,20 @@ struct Align16K([u8; 16384]);
 #[repr(C, align(512))]
 struct Align64K([u8; 65536]);
 
-#[repr(C, align(512))]
-struct AlignChunk([u8; 65536]);
-
 static mut MBR: Align512 = Align512([0; 512]);
 static mut BPB: Align512 = Align512([0; 512]);
 static mut FATBUF: Align64K = Align64K([0; 65536]);
 static mut ROOTBUF: Align16K = Align16K([0; 16384]);
 static mut CLUSBUF: Align4K = Align4K([0; 4096]);
-static mut CHUNK: AlignChunk = AlignChunk([0; 65536]);
+static mut IOBLK: Align4K = Align4K([0; 4096]);
+static mut CHUNK: Align64K = Align64K([0; 65536]);
 
 pub struct Target {
     pub bio: *mut BlockIo,
     pub blocks: u64,
     pub media_id: u32,
     pub part_secs: u64,
-}
-
-unsafe fn wr(t: &Target, lba: u64, buf: *mut u8, bytes: usize) -> bool {
-    let f: extern "efiapi" fn(*mut BlockIo, u32, u64, usize, *mut u8) -> Status =
-        core::mem::transmute((*t.bio).write_blocks);
-    if f(t.bio, t.media_id, lba, bytes, buf) != EFI_SUCCESS {
-        return false;
-    }
-    true
+    pub bs: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -68,6 +59,57 @@ static mut DIAG_N: usize = 0;
 
 pub unsafe fn diagnostics() -> &'static [BlkDiag] {
     core::slice::from_raw_parts(core::ptr::addr_of!(DIAG) as *const BlkDiag, DIAG_N)
+}
+
+unsafe fn dev_write(t: &Target, dev_lba: u64, buf: *mut u8, bytes: usize) -> bool {
+    let f: extern "efiapi" fn(*mut BlockIo, u32, u64, usize, *mut u8) -> Status =
+        core::mem::transmute((*t.bio).write_blocks);
+    f(t.bio, t.media_id, dev_lba, bytes, buf) == EFI_SUCCESS
+}
+
+unsafe fn dev_read(t: &Target, dev_lba: u64, buf: *mut u8, bytes: usize) -> bool {
+    let f: extern "efiapi" fn(*mut BlockIo, u32, u64, usize, *mut u8) -> Status =
+        core::mem::transmute((*t.bio).read_blocks);
+    f(t.bio, t.media_id, dev_lba, bytes, buf) == EFI_SUCCESS
+}
+
+unsafe fn wr(t: &Target, lba512: u64, buf: *mut u8, bytes: usize) -> bool {
+    if t.bs == 512 {
+        return dev_write(t, lba512, buf, bytes);
+    }
+    let per = (t.bs / 512) as u64;
+    let io = core::ptr::addr_of_mut!(IOBLK) as *mut u8;
+    let mut l = lba512;
+    let mut done = 0usize;
+    while done < bytes {
+        let dev_lba = l / per;
+        let in_blk = ((l % per) * 512) as usize;
+        let mut n = bytes - done;
+        let room = t.bs as usize - in_blk;
+        if n > room {
+            n = room;
+        }
+        if in_blk == 0 && n == t.bs as usize {
+            if !dev_write(t, dev_lba, buf.add(done), t.bs as usize) {
+                return false;
+            }
+        } else {
+            if !dev_read(t, dev_lba, io, t.bs as usize) {
+                return false;
+            }
+            let mut i = 0;
+            while i < n {
+                *io.add(in_blk + i) = *buf.add(done + i);
+                i += 1;
+            }
+            if !dev_write(t, dev_lba, io, t.bs as usize) {
+                return false;
+            }
+        }
+        done += n;
+        l += (n / 512) as u64;
+    }
+    true
 }
 
 pub unsafe fn pick_target() -> Option<Target> {
@@ -93,11 +135,14 @@ pub unsafe fn pick_target() -> Option<Target> {
             let _ = reset(b, 0);
             let m = (*b).media;
             if !m.is_null() {
-                let mb = (*m).last_block * (*m).block_size as u64 / (1024 * 1024);
+                let bs = (*m).block_size;
+                let last = (*m).last_block;
+                let cap512 = if bs == 0 { 0 } else { last * bs as u64 / 512 };
+                let mb = cap512 * 512 / (1024 * 1024);
                 if DIAG_N < 12 {
                     DIAG[DIAG_N] = BlkDiag {
                         mb,
-                        bs: (*m).block_size,
+                        bs,
                         ro: (*m).read_only,
                         removable: (*m).removable,
                         logical: (*m).logical_partition,
@@ -105,20 +150,22 @@ pub unsafe fn pick_target() -> Option<Target> {
                     };
                     DIAG_N += 1;
                 }
+                let supported = bs == 512 || bs == 4096;
                 if (*m).present == 1
                     && (*m).read_only == 0
-                    && (*m).block_size == 512
-                    && (*m).last_block >= 40_000
+                    && supported
+                    && cap512 >= MIN_CAP_512
                 {
                     let score = (if (*m).logical_partition == 0 { 1u64 << 40 } else { 0 })
-                        + (*m).last_block;
+                        + cap512;
                     if best.is_none() || score > best_score {
                         best_score = score;
                         best = Some(Target {
                             bio: b,
-                            blocks: (*m).last_block,
+                            blocks: cap512,
                             media_id: (*m).media_id,
                             part_secs: 0,
+                            bs,
                         });
                     }
                 }
@@ -127,6 +174,7 @@ pub unsafe fn pick_target() -> Option<Target> {
         i += 1;
     }
     let mut t = best?;
+    let per = (t.bs / 512) as u64;
     let mut secs = t.blocks.saturating_sub(PART_START);
     if secs > MAX_PART {
         secs = MAX_PART;
@@ -135,12 +183,14 @@ pub unsafe fn pick_target() -> Option<Target> {
     if secs > max_allowed {
         secs = max_allowed;
     }
+    secs -= secs % per;
     if secs < 20_000 {
         return None;
     }
     t.part_secs = secs;
     Some(t)
 }
+
 fn put16(buf: *mut u8, off: usize, v: u16) {
     unsafe {
         core::ptr::write_unaligned(buf.add(off) as *mut u16, v);
@@ -153,13 +203,14 @@ fn put32(buf: *mut u8, off: usize, v: u32) {
     }
 }
 
-unsafe fn build_mbr(part_secs: u64) {
+unsafe fn build_mbr(bs: u32, part_secs: u64) {
     let m = core::ptr::addr_of_mut!(MBR) as *mut u8;
     let mut i = 0;
     while i < 512 {
         *m.add(i) = 0;
         i += 1;
     }
+    let per = (bs / 512) as u64;
     let e = m.add(446);
     *e = 0x80;
     *e.add(1) = 0xFE;
@@ -169,8 +220,8 @@ unsafe fn build_mbr(part_secs: u64) {
     *e.add(5) = 0xFE;
     *e.add(6) = 0xFF;
     *e.add(7) = 0xFF;
-    put32(e, 8, PART_START as u32);
-    put32(e, 12, part_secs as u32);
+    put32(e, 8, (PART_START / per) as u32);
+    put32(e, 12, (part_secs / per) as u32);
     *m.add(510) = 0x55;
     *m.add(511) = 0xAA;
 }
@@ -254,14 +305,9 @@ unsafe fn set_fat(cluster: u16, val: u16) {
     put16(f, cluster as usize * 2, val);
 }
 
-pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
-    let clusters_needed = (size + 4095) / 4096;
-    if clusters_needed + 4 > 32760 {
-        return false;
-    }
-    build_mbr(t.part_secs);
+unsafe fn format(t: &Target, clusters_needed: u32) -> bool {
+    build_mbr(t.bs, t.part_secs);
     build_bpb(t.part_secs);
-
     let mbr = core::ptr::addr_of_mut!(MBR) as *mut u8;
     if !wr(t, 0, mbr, 512) {
         return false;
@@ -270,7 +316,6 @@ pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
     if !wr(t, PART_START, bpb, 512) {
         return false;
     }
-
     let fat = core::ptr::addr_of_mut!(FATBUF) as *mut u8;
     clear(fat, 65536);
     put16(fat, 0, 0xFFF8);
@@ -290,36 +335,39 @@ pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
     if !wr(t, PART_START + 1 + FAT_SECS as u64, fat, 65536) {
         return false;
     }
-
     let root = core::ptr::addr_of_mut!(ROOTBUF) as *mut u8;
     clear(root, 16384);
-    let efi = b"EFI        ";
-    dir_item(root, 0, efi, 0x10, 2, 0);
+    dir_item(root, 0, b"EFI        ", 0x10, 2, 0);
     if !wr(t, PART_START + ROOT_SEC_START as u64, root, 16384) {
         return false;
     }
-
     let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
     clear(clus, 4096);
-    let dot = b".          ";
-    let dotdot = b"..         ";
-    dir_item(clus, 0, dot, 0x10, 2, 0);
-    dir_item(clus, 1, dotdot, 0x10, 0, 0);
-    let boot = b"BOOT       ";
-    dir_item(clus, 2, boot, 0x10, 3, 0);
+    dir_item(clus, 0, b".          ", 0x10, 2, 0);
+    dir_item(clus, 1, b"..         ", 0x10, 0, 0);
+    dir_item(clus, 2, b"BOOT       ", 0x10, 3, 0);
     if !wr(t, PART_START + DATA_START as u64, clus, 4096) {
         return false;
     }
+    true
+}
 
+pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
+    let clusters_needed = (size + 4095) / 4096;
+    if clusters_needed + 4 > 32760 {
+        return false;
+    }
+    if !format(t, clusters_needed as u32) {
+        return false;
+    }
+    let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
     clear(clus, 4096);
-    dir_item(clus, 0, dot, 0x10, 3, 0);
-    dir_item(clus, 1, dotdot, 0x10, 2, 0);
-    let efifile = b"BOOTX64 EFI";
-    dir_item(clus, 2, efifile, 0x20, 4, size as u32);
+    dir_item(clus, 0, b".          ", 0x10, 3, 0);
+    dir_item(clus, 1, b"..         ", 0x10, 2, 0);
+    dir_item(clus, 2, b"BOOTX64 EFI", 0x20, 4, size as u32);
     if !wr(t, PART_START + (DATA_START + SPC) as u64, clus, 4096) {
         return false;
     }
-
     let mut off = 0usize;
     let mut cluster = 4u64;
     while off < size {
@@ -342,74 +390,53 @@ pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
     true
 }
 
-pub unsafe fn target_info(t: &Target) -> (u64, u64) {
-    (t.blocks * 512 / (1024 * 1024), t.part_secs * 512 / (1024 * 1024))
-}
-
 pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: usize) -> bool {
     let clusters_needed = (size + 4095) / 4096;
     if clusters_needed + 4 > 32760 {
         return false;
     }
-    build_mbr(t.part_secs);
-    build_bpb(t.part_secs);
-    let mbr = core::ptr::addr_of_mut!(MBR) as *mut u8;
-    if !wr(t, 0, mbr, 512) { return false; }
-    let bpb = core::ptr::addr_of_mut!(BPB) as *mut u8;
-    if !wr(t, PART_START, bpb, 512) { return false; }
-    let fat = core::ptr::addr_of_mut!(FATBUF) as *mut u8;
-    clear(fat, 65536);
-    put16(fat, 0, 0xFFF8);
-    put16(fat, 2, 0xFFFF);
-    put16(fat, 4, 0xFFFF);
-    put16(fat, 6, 0xFFFF);
-    let mut c = 4u16;
-    let last = 3 + clusters_needed as u16;
-    while c < last {
-        put16(fat, c as usize * 2, c + 1);
-        c += 1;
+    if !format(t, clusters_needed as u32) {
+        return false;
     }
-    put16(fat, last as usize * 2, 0xFFFF);
-    if !wr(t, PART_START + 1, fat, 65536) { return false; }
-    if !wr(t, PART_START + 1 + FAT_SECS as u64, fat, 65536) { return false; }
-    let root = core::ptr::addr_of_mut!(ROOTBUF) as *mut u8;
-    clear(root, 16384);
-    dir_item(root, 0, b"EFI        ", 0x10, 2, 0);
-    if !wr(t, PART_START + ROOT_SEC_START as u64, root, 16384) { return false; }
     let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
-    clear(clus, 4096);
-    dir_item(clus, 0, b".          ", 0x10, 2, 0);
-    dir_item(clus, 1, b"..         ", 0x10, 0, 0);
-    dir_item(clus, 2, b"BOOT       ", 0x10, 3, 0);
-    if !wr(t, PART_START + DATA_START as u64, clus, 4096) { return false; }
     clear(clus, 4096);
     dir_item(clus, 0, b".          ", 0x10, 3, 0);
     dir_item(clus, 1, b"..         ", 0x10, 2, 0);
     dir_item(clus, 2, b"BOOTX64 EFI", 0x20, 4, size as u32);
-    if !wr(t, PART_START + (DATA_START + SPC) as u64, clus, 4096) { return false; }
+    if !wr(t, PART_START + (DATA_START + SPC) as u64, clus, 4096) {
+        return false;
+    }
     let chunk = core::ptr::addr_of_mut!(CHUNK) as *mut u8;
     let mut off = 0usize;
     let mut cluster = 4u64;
     while off < size {
         let n = if size - off < 65536 { size - off } else { 65536 };
-        let mut got = crate::fs::read_at(f, off as u64, core::slice::from_raw_parts_mut(chunk, n));
-        let g = match got { Some(g) => g, None => return false };
+        let got = match crate::fs::read_at(f, off as u64, core::slice::from_raw_parts_mut(chunk, n)) {
+            Some(g) => g,
+            None => return false,
+        };
         let mut co = 0usize;
-        while co < g {
-            let m = if g - co < 4096 { g - co } else { 4096 };
+        while co < got {
+            let m = if got - co < 4096 { got - co } else { 4096 };
             clear(clus, 4096);
             let mut i = 0;
-            while i < m { *clus.add(i) = *chunk.add(co + i); i += 1; }
+            while i < m {
+                *clus.add(i) = *chunk.add(co + i);
+                i += 1;
+            }
             if !wr(t, PART_START + DATA_START as u64 + (cluster - 2) * SPC as u64, clus, 4096) {
                 return false;
             }
             co += 4096;
             cluster += 1;
         }
-        off += g;
-        let _ = &mut got;
+        off += got;
     }
     let fl: extern "efiapi" fn(*mut BlockIo) -> Status = core::mem::transmute((*t.bio).flush);
     fl(t.bio);
     true
+}
+
+pub unsafe fn target_info(t: &Target) -> (u64, u64) {
+    (t.blocks * 512 / (1024 * 1024), t.part_secs * 512 / (1024 * 1024))
 }

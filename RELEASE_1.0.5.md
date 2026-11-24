@@ -10,7 +10,9 @@
   - 可安装容量门槛由 50MB 降到 20MB（`last_block >= 40000`），小盘可用；
   - 优先选择整盘（`LogicalPartition=0`），避免误选分区；
   - 未找到磁盘时在界面列出检测到的块设备：容量、块大小、只读、分区标志；
-  - 支持 IDE / SATA / virtio-blk / NVMe 等 512 字节块设备。
+  - 支持 IDE / SATA / virtio-blk / NVMe，兼容 512 字节与 4096 字节（4Kn）逻辑块设备；
+  - 安装前重复 ConnectController 并等待，设备延迟就绪也能识别；
+  - 诊断行显示「就绪」状态。
 - **确认方式**：安装确认页直接按 **Enter** 开始安装，按 `N` / `Esc` 取消。
 
 ## 安装流程
@@ -23,8 +25,9 @@
 ## 验证
 
 QEMU 11.1.3 + OVMF 202308：
-- 64MB virtio-blk 磁盘识别为 64MB，按 Enter 安装成功；
-- 安装后从硬盘 ESP 启动进入 HYWOS 1.0.5。
+- 64MB virtio-blk（512B 块）：识别 63MB，按 Enter 安装，从硬盘启动进入 HYWOS 1.0.5；
+- 128MB NVMe（4Kn，4096B 块）：识别 127MB，MBR 分区起始块 256，
+  FAT16 ESP 写入正确，安装后从 NVMe 启动进入 HYWOS 1.0.5。
 
 ## 产物
 

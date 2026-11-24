@@ -51,13 +51,34 @@ unsafe fn wr(t: &Target, lba: u64, buf: *mut u8, bytes: usize) -> bool {
     true
 }
 
+#[derive(Clone, Copy)]
+pub struct BlkDiag {
+    pub mb: u64,
+    pub bs: u32,
+    pub ro: u8,
+    pub removable: u8,
+    pub logical: u8,
+    pub present: u8,
+}
+
+static mut DIAG: [BlkDiag; 12] = [BlkDiag {
+    mb: 0, bs: 0, ro: 0, removable: 0, logical: 0, present: 0,
+}; 12];
+static mut DIAG_N: usize = 0;
+
+pub unsafe fn diagnostics() -> &'static [BlkDiag] {
+    core::slice::from_raw_parts(core::ptr::addr_of!(DIAG) as *const BlkDiag, DIAG_N)
+}
+
 pub unsafe fn pick_target() -> Option<Target> {
+    DIAG_N = 0;
     let mut buf: *mut Handle = core::ptr::null_mut();
     let mut n: usize = 0;
     if !status_ok(bs_locate_handle_buffer(&GUID_BLOCK_IO, &mut n, &mut buf)) || buf.is_null() {
         return None;
     }
     let mut best: Option<Target> = None;
+    let mut best_score = 0u64;
     let mut i = 0;
     while i < n {
         let mut b: *mut BlockIo = core::ptr::null_mut();
@@ -67,25 +88,39 @@ pub unsafe fn pick_target() -> Option<Target> {
             &mut b as *mut *mut BlockIo as *mut *mut c_void,
         )) && !b.is_null()
         {
+            let reset: extern "efiapi" fn(*mut BlockIo, u8) -> Status =
+                core::mem::transmute((*b).reset);
+            let _ = reset(b, 0);
             let m = (*b).media;
-            if !m.is_null()
-                && (*m).present == 1
-                && (*m).read_only == 0
-                && (*m).block_size == 512
-                && (*m).last_block > 100_000
-            {
-                let blocks = (*m).last_block;
-                let ok = match &best {
-                    None => true,
-                    Some(t) => blocks > t.blocks,
-                };
-                if ok {
-                    best = Some(Target {
-                        bio: b,
-                        blocks,
-                        media_id: (*m).media_id,
-                        part_secs: 0,
-                    });
+            if !m.is_null() {
+                let mb = (*m).last_block * (*m).block_size as u64 / (1024 * 1024);
+                if DIAG_N < 12 {
+                    DIAG[DIAG_N] = BlkDiag {
+                        mb,
+                        bs: (*m).block_size,
+                        ro: (*m).read_only,
+                        removable: (*m).removable,
+                        logical: (*m).logical_partition,
+                        present: (*m).present,
+                    };
+                    DIAG_N += 1;
+                }
+                if (*m).present == 1
+                    && (*m).read_only == 0
+                    && (*m).block_size == 512
+                    && (*m).last_block >= 40_000
+                {
+                    let score = (if (*m).logical_partition == 0 { 1u64 << 40 } else { 0 })
+                        + (*m).last_block;
+                    if best.is_none() || score > best_score {
+                        best_score = score;
+                        best = Some(Target {
+                            bio: b,
+                            blocks: (*m).last_block,
+                            media_id: (*m).media_id,
+                            part_secs: 0,
+                        });
+                    }
                 }
             }
         }
@@ -100,13 +135,12 @@ pub unsafe fn pick_target() -> Option<Target> {
     if secs > max_allowed {
         secs = max_allowed;
     }
-    if secs < 40_000 {
+    if secs < 20_000 {
         return None;
     }
     t.part_secs = secs;
     Some(t)
 }
-
 fn put16(buf: *mut u8, off: usize, v: u16) {
     unsafe {
         core::ptr::write_unaligned(buf.add(off) as *mut u16, v);

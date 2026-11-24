@@ -58,9 +58,9 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.4 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.5 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
-    line(g, 140, "安装介质 : HYWOS 1.0.4 ISO（UEFI 启动）", rgb(170, 190, 220));
+    line(g, 140, "安装介质 : HYWOS 1.0.5 ISO（UEFI 启动）", rgb(170, 190, 220));
     let mut b = [0u8; 96];
     let mut l = 0;
     for ch in "目标磁盘 : ".as_bytes().iter() { b[l] = *ch; l += 1; }
@@ -74,9 +74,9 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
     g.rect(64, 320, g.w as i32 - 128, 1, rgb(60, 80, 110), 200);
     line(g, 344, "警告：安装会清空目标磁盘的分区表与全部数据。", rgb(255, 190, 120));
     line(g, 392, "是否将 HYWOS 安装到此磁盘？", rgb(235, 245, 255));
-    g.rect(64, 436, 260, 48, rgb(20, 60, 120), 220);
-    line(g, 444, "  [ y ] 安装    [ n ] 取消  ", rgb(200, 230, 255));
-    line(g, 520, "直接按 y 确认安装，按 n 取消。", rgb(140, 160, 190));
+    g.rect(64, 436, 300, 48, rgb(20, 60, 120), 220);
+    line(g, 444, "  [ Enter ] 安装    [ N ] 取消  ", rgb(200, 230, 255));
+    line(g, 520, "按 Enter 开始安装，按 N 取消。", rgb(140, 160, 190));
     line(g, 680, "HYWOS Installer · 命令行安装模式", rgb(110, 130, 160));
 }
 
@@ -87,7 +87,7 @@ unsafe fn screen_msg(g: &Gfx, title: &str, body: &str, color: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.0.4 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.0.5 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, title, color, 2);
     let mut y = 260;
@@ -116,17 +116,54 @@ pub unsafe fn get_image() -> Option<(*const u8, usize)> {
     Some(((*li).image_base as *const u8, (*li).image_size))
 }
 
+unsafe fn show_diag(g: &Gfx) {
+    let diag = diskfmt::diagnostics();
+    let mut y = 400;
+    g.text(64, y, "检测到的块设备：", rgb(180, 195, 220), 2);
+    y += 44;
+    let mut i = 0;
+    while i < diag.len() && i < 5 {
+        let d = &diag[i];
+        let mut b = [0u8; 140];
+        let mut l = 0;
+        for c in "设备 ".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], (i + 1) as u32, 1);
+        for c in "：".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], d.mb as u32, 1);
+        for c in " MB · 块 ".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], d.bs, 1);
+        for c in " · 只读 ".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], d.ro as u32, 1);
+        for c in " · 分区 ".as_bytes() { b[l] = *c; l += 1; }
+        l += crate::hw::num2(&mut b[l..], d.logical as u32, 1);
+        g.text(64, y, core::str::from_utf8_unchecked(&b[..l]), rgb(160, 180, 210), 2);
+        y += 44;
+        i += 1;
+    }
+}
+
 pub unsafe fn run(g: &Gfx) -> ! {
-    let target = diskfmt::pick_target();
-    let (cap, part) = match &target {
-        Some(t) => diskfmt::target_info(t),
-        None => (0, 0),
+    let t = match diskfmt::pick_target() {
+        Some(t) => t,
+        None => {
+            screen_msg(
+                g,
+                "未找到可安装的硬盘",
+                "请为虚拟机添加一块 ≥20MB 的可写磁盘\n（IDE / SATA / virtio-blk / NVMe 均可）。",
+                rgb(255, 140, 130),
+            );
+            show_diag(g);
+            loop {
+                bs_stall(1_000_000);
+            }
+        }
     };
+    let (cap, part) = diskfmt::target_info(&t);
     screen_confirm(g, cap, part);
     let mut chosen = false;
     loop {
         if let Some((_scan, ch)) = read_key() {
-            if ch == b'y' as u16 || ch == b'Y' as u16 {
+            if ch == 13 {
                 chosen = true;
                 break;
             }
@@ -142,15 +179,6 @@ pub unsafe fn run(g: &Gfx) -> ! {
             bs_stall(1_000_000);
         }
     }
-    let t = match target {
-        Some(t) => t,
-        None => {
-            screen_msg(g, "未找到目标磁盘", "请为虚拟机添加一块可写硬盘（>=100MB）。\n安装程序无法继续。", rgb(255, 140, 130));
-            loop {
-                bs_stall(1_000_000);
-            }
-        }
-    };
     screen_msg(g, "正在安装 HYWOS…", "写入分区表与 FAT16 引导分区\n复制 BOOTX64.EFI 到 ESP", rgb(150, 210, 255));
     let ok = match fs::open_sys("\\EFI\\BOOT\\BOOTX64.EFI") {
         Some(f) => {

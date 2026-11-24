@@ -145,7 +145,8 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 |---|
 | ![文件](docs/screenshots/files.png) |
 
-截图由 QEMU 运行后通过 VNC 抓取 framebuffer 原始画面，未做修图。
+截图由 QEMU 运行 `hywos.iso` 安装后、从硬盘启动，通过 VNC 抓取 framebuffer 原始画面，
+未做修图。应用界面截图取自 1.0.3 实机（1.0.4 仅版本号与安装流程变化）。
 
 ## 快捷键
 

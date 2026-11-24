@@ -9,11 +9,14 @@ if [ ! -f "$EFI" ]; then
 fi
 
 rm -rf build
-mkdir -p build/iso/EFI/BOOT
-cp "$EFI" build/iso/EFI/BOOT/BOOTX64.EFI
 
 mkdir -p build/esp/EFI/BOOT
 cp "$EFI" build/esp/EFI/BOOT/BOOTX64.EFI
+mkdir -p build/iso/HYWOS
+mkdir -p build/iso/EFI/BOOT
+cp "$EFI" build/iso/EFI/BOOT/BOOTX64.EFI
+cp tools/cdmark.txt build/iso/HYWOS/CD
+cp tools/cdmark.txt build/iso/CDMARK.TXT
 
 echo "creating efiboot.img"
 dd if=/dev/zero of=build/efiboot.img bs=1M count=24 status=none
@@ -21,6 +24,8 @@ mkfs.fat -F 16 build/efiboot.img >/dev/null
 mmd -i build/efiboot.img ::/EFI
 mmd -i build/efiboot.img ::/EFI/BOOT
 mcopy -i build/efiboot.img build/esp/EFI/BOOT/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+mmd -i build/efiboot.img ::/HYWOS
+mcopy -i build/efiboot.img tools/cdmark.txt ::/HYWOS/CD
 
 echo "creating usb.img (user volume, MBR + FAT32)"
 dd if=/dev/zero of=build/usb.img bs=1M count=64 status=none
@@ -37,6 +42,7 @@ mcopy -i "$IMG" tools/welcome.txt ::/updates/readme.txt
 
 echo "creating kernel test disk"
 dd if=/dev/zero of=build/kdisk.img bs=1M count=64 status=none
+dd if=/dev/zero of=build/install.img bs=1M count=256 status=none
 
 echo "creating ISO"
 cp build/efiboot.img build/iso/efiboot.img

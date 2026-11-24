@@ -69,8 +69,8 @@ impl BootAnim {
         let bg_top = rgb(9, 13, 34);
         let bg_bot = rgb(6, 5, 16);
         background(g, bg_top, bg_bot);
-        let tx = cx - 40;
-        let ty = cy - 16;
+        let tx = cx - 80;
+        let ty = cy - 32;
         let mut seed = 0x51a3c7u32;
         let mut parts = [Part {
             sx: 0.0,
@@ -150,21 +150,21 @@ impl BootAnim {
             (p.sx + (tx - p.sx) * e, p.sy + (ty - p.sy) * e, 235)
         } else if f <= 72 {
             let t = ease((f - 50) as f32 / 22.0);
-            let rx = 142.0 + (5.0 - 142.0) * t;
-            let ry = 104.0 + (9.0 - 104.0) * t;
-            let ox = self.cx as f32 + ((self.tx as f32 + 56.0) - self.cx as f32) * t;
-            let oy = self.cy as f32 + ((self.ty as f32 + 16.0) - self.cy as f32) * t;
+            let rx = 142.0 + (11.0 - 142.0) * t;
+            let ry = 104.0 + (19.0 - 104.0) * t;
+            let ox = self.cx as f32 + ((self.tx as f32 + 112.0) - self.cx as f32) * t;
+            let oy = self.cy as f32 + ((self.ty as f32 + 32.0) - self.cy as f32) * t;
             (
                 ox + cosf(p.ang) * rx,
                 oy + sinf(p.ang) * ry,
                 (235.0 - 90.0 * t) as u8,
             )
         } else {
-            let ox = self.tx as f32 + 56.0;
-            let oy = self.ty as f32 + 16.0;
+            let ox = self.tx as f32 + 112.0;
+            let oy = self.ty as f32 + 32.0;
             (
-                ox + cosf(p.ang) * 5.0,
-                oy + sinf(p.ang) * 9.0,
+                ox + cosf(p.ang) * 11.0,
+                oy + sinf(p.ang) * 19.0,
                 150,
             )
         }
@@ -179,7 +179,7 @@ impl BootAnim {
                 self.title_cleared = true;
             }
             let c0 = self.bg_at(self.ty);
-            g.rect(self.tx - 10, self.ty - 8, 100, 46, c0, 255);
+            g.rect(self.tx - 18, self.ty - 14, 196, 96, c0, 255);
         }
 
         let mut i = 0;
@@ -229,10 +229,10 @@ impl BootAnim {
         if f >= 100 {
             let a = ((f - 100) * 20).min(255) as u8;
             let st = "星河 · 中文界面 · 64 位";
-            let sw = crate::gfx::text_width(st, 1);
-            let sy = self.ty + 46;
-            g.rect(self.cx - sw / 2 - 4, sy - 2, sw + 8, 20, self.bg_at(sy), 255);
-            g.text_a(self.cx - sw / 2, sy, st, rgb(150, 210, 255), 1, a);
+            let sw = crate::gfx::text_width(st, 2);
+            let sy = self.ty + 78;
+            g.rect(self.cx - sw / 2 - 6, sy - 4, sw + 12, 40, self.bg_at(sy), 255);
+            g.text_a(self.cx - sw / 2, sy, st, rgb(150, 210, 255), 2, a);
         }
 
         if f > FRAMES_TOTAL - 8 {
@@ -241,5 +241,25 @@ impl BootAnim {
         }
 
         self.frame >= FRAMES_TOTAL
+    }
+}
+
+fn big2(g: &Gfx, x: i32, y: i32, ch: u8, c: u32, alpha: u8) {
+    let idx = if ch >= 32 && ch <= 126 { (ch - 32) as usize } else { 0 };
+    let bpg = crate::font::FONT_16X32_BPG;
+    let glyph = &crate::font::FONT_16X32[idx * bpg..(idx + 1) * bpg];
+    let mut gy = 0;
+    while gy < 32 {
+        let mut gx = 0;
+        while gx < 16 {
+            let byte = glyph[gy * 8 + gx / 2];
+            let nib = if gx % 2 == 0 { byte >> 4 } else { byte & 0x0f };
+            if nib > 0 {
+                let a = ((nib as u32 * 17 * alpha as u32) / 255) as u8;
+                g.rect(x + gx as i32 * 2, y + gy as i32 * 2, 2, 2, c, a);
+            }
+            gx += 1;
+        }
+        gy += 1;
     }
 }

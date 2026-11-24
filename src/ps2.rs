@@ -79,15 +79,9 @@ pub fn mouse_ok() -> bool {
 
 pub unsafe fn init() -> bool {
     flush_out();
-    wr_cmd(0xAD);
-    wr_cmd(0xA7);
-    flush_out();
     wr_cmd(0xA8);
     flush_out();
-    wr_cmd(0xAE);
-    wr_data(0xF4);
-    let _ = rd_data();
-    KBD_OK = true;
+    KBD_OK = false;
     if !mouse_write(0xF6) {
         flush_out();
         MOUSE_OK = false;

@@ -1,4 +1,4 @@
-# HYWOS 1.0.3 «星河 · 粒子版»
+# HYWOS 1.0.4 «星河 · 安装版»
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
@@ -8,7 +8,7 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 以 `no_std` 方式直接运行在 UEFI 固件之上。1.0.2 增加了显卡、PS/2 键鼠与声卡的
 寄存器级驱动，并保留 1.0.1 的完整中文界面。
 
-![粒子 O](docs/screenshots/boot-o.png)
+![粒子 O 启动动画](docs/screenshots/boot-large.png)
 
 ## 目录
 
@@ -29,6 +29,29 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 - [设计说明](#设计说明)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
+
+## 1.0.4 新变化
+
+- **ISO 改为纯安装介质**：从 ISO 启动后进入**命令行安装程序**，先询问是否安装；
+  确认后自动写入 MBR 分区表、创建 FAT16 引导分区（ESP）、
+  把 `BOOTX64.EFI` 复制到 `\EFI\BOOT\`，重启即可从硬盘引导。
+- **安装后从硬盘启动**：硬盘 ESP 不含安装介质标记，启动时直接进入
+  星河动画与桌面，不再进入安装器。
+- **修复启动画面文字过小**：HYWOS 标题放大到 32×64 像素/字符，
+  粒子 O 与中文副标题同步放大（2×）。
+- 版本号升级到 1.0.4。
+
+## 安装 HYWOS
+
+1. 为虚拟机/机器准备一块 **≥100MB 的可写磁盘**（安装器会写入 128MB 分区）。
+2. 使用 `hywos.iso` 启动，进入命令行安装程序，界面会显示目标磁盘容量。
+3. 输入 `y` 确认，安装器依次执行：
+   - 写入 MBR 分区表（type 0x0E，起始 LBA 2048）；
+   - 创建 FAT16 引导分区（128MB，簇 4KB）；
+   - 创建 `\EFI\BOOT` 目录并复制 `BOOTX64.EFI`；
+4. 看到「安装完成」后关闭虚拟机，**移除 ISO**，从硬盘启动。
+
+安装器只会操作所选的可写磁盘；从 ISO 启动时不会进入桌面。
 
 ## 1.0.3 新变化
 
@@ -98,25 +121,29 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 
 ## 界面截图
 
-| 启动动画 |
+| 启动动画（粒子 O，已放大） | 安装程序（命令行） |
+|---|---|---|
+| ![启动动画](docs/screenshots/boot-large.png) | ![安装程序](docs/screenshots/installer.png) |
+
+| 安装完成 | 桌面（从硬盘启动） |
+|---|---|
+| ![安装完成](docs/screenshots/install-done.png) | ![桌面](docs/screenshots/desktop.png) |
+
+| Launchpad | 天气 |
+|---|---|
+| ![Launchpad](docs/screenshots/launchpad.png) | ![天气](docs/screenshots/weather.png) |
+
+| 设置 · 权限 | 应用商店 |
+|---|---|
+| ![设置](docs/screenshots/settings.png) | ![商店](docs/screenshots/store.png) |
+
+| 关于本机（驱动信息） | 终端 |
+|---|---|
+| ![关于](docs/screenshots/about.png) | ![终端](docs/screenshots/terminal.png) |
+
+| 文件 |
 |---|
-| ![启动动画](docs/screenshots/boot-1.png) |
-
-| 桌面（VBE 1024×768） | Launchpad |
-|---|---|
-| ![桌面](docs/screenshots/desktop.png) | ![Launchpad](docs/screenshots/launchpad.png) |
-
-| 天气（PS/2 键盘打开） | 设置 · 权限 |
-|---|---|
-| ![天气](docs/screenshots/weather.png) | ![设置](docs/screenshots/settings.png) |
-
-| 应用商店 | 关于本机（驱动信息） |
-|---|---|
-| ![商店](docs/screenshots/store.png) | ![关于](docs/screenshots/about.png) |
-
-| 终端 | 文件 |
-|---|---|
-| ![终端](docs/screenshots/terminal.png) | ![文件](docs/screenshots/files.png) |
+| ![文件](docs/screenshots/files.png) |
 
 截图由 QEMU 运行后通过 VNC 抓取 framebuffer 原始画面，未做修图。
 
@@ -206,6 +233,8 @@ python3 tools/gen_logo_data.py
 qemu-system-x86_64 -M q35 -m 512 -smp 4 -usb \
   -bios /usr/share/edk2/ovmf/OVMF.fd \
   -vga std -device AC97 \
+  -drive file=build/install.img,format=raw,if=none,id=target \
+  -device virtio-blk-pci,drive=target \
   -drive file=build/hywos.iso,media=cdrom,readonly=on \
   -drive file=build/usb.img,if=none,id=usbdisk,format=raw \
   -device usb-storage,drive=usbdisk \

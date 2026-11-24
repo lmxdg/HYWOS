@@ -203,6 +203,75 @@ pub unsafe fn fs_init() -> usize {
     count
 }
 
+
+pub unsafe fn open_sys(path: &str) -> Option<*mut FileProtocol> {
+    let f = open_on(VOLS[SYS_VOL], path, MODE_READ, 0);
+    if f.is_null() { None } else { Some(f) }
+}
+
+pub unsafe fn close_f(f: *mut FileProtocol) {
+    close(f);
+}
+
+pub unsafe fn file_size(f: *mut FileProtocol) -> Option<usize> {
+    let gi: extern "efiapi" fn(*mut FileProtocol, *mut Guid, *mut usize, *mut u8) -> Status =
+        core::mem::transmute((*f).get_info);
+    let mut buf = [0u8; 512];
+    let mut sz = 512usize;
+    let mut g = GUID_FILE_INFO;
+    if gi(f, &mut g, &mut sz, buf.as_mut_ptr()) != EFI_SUCCESS {
+        return None;
+    }
+    let size = core::ptr::read_unaligned(buf.as_ptr().add(8) as *const u64);
+    Some(size as usize)
+}
+
+pub unsafe fn read_at(f: *mut FileProtocol, off: u64, buf: &mut [u8]) -> Option<usize> {
+    let sp: extern "efiapi" fn(*mut FileProtocol, u64) -> Status =
+        core::mem::transmute((*f).set_position);
+    if sp(f, off) != EFI_SUCCESS {
+        return None;
+    }
+    let r: extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut u8) -> Status =
+        core::mem::transmute((*f).read);
+    let mut sz = buf.len();
+    if r(f, &mut sz, buf.as_mut_ptr()) == EFI_SUCCESS {
+        Some(sz)
+    } else {
+        None
+    }
+}
+pub unsafe fn is_install_media() -> bool {
+    let mut k = 0;
+    while k < VOL_COUNT {
+        if exists_vol(k, "\\CDMARK.TXT") || exists_vol(k, "\\HYWOS\\CD") {
+            return true;
+        }
+        k += 1;
+    }
+    let mut buf: *mut Handle = core::ptr::null_mut();
+    let mut n: usize = 0;
+    if status_ok(bs_locate_handle_buffer(&GUID_BLOCK_IO, &mut n, &mut buf)) && !buf.is_null() {
+        let mut i = 0;
+        while i < n {
+            let mut b: *mut BlockIo = core::ptr::null_mut();
+            if status_ok(bs_handle_protocol(
+                *buf.add(i),
+                &GUID_BLOCK_IO,
+                &mut b as *mut *mut BlockIo as *mut *mut core::ffi::c_void,
+            )) && !b.is_null()
+            {
+                let m = (*b).media;
+                if !m.is_null() && (*m).present == 1 && (*m).block_size == 2048 {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+    }
+    false
+}
+
 pub unsafe fn sys_vol() -> usize { SYS_VOL }
 pub unsafe fn usr_vol() -> usize { USR_VOL }
 pub unsafe fn vol_count() -> usize { VOL_COUNT }

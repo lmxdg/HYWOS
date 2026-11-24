@@ -5,7 +5,9 @@ mod anim;
 mod apps;
 mod audio;
 mod cjk;
+mod diskfmt;
 mod input;
+mod installer;
 mod logo;
 mod port;
 mod ps2;
@@ -23,14 +25,15 @@ use efi::*;
 use gfx::{rgb, Gfx};
 
 #[export_name = "efi_main"]
-pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Status {
+pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Status {
     unsafe {
         ST = systab;
         if ST.is_null() {
             return 1;
         }
         BS = (*ST).boot_services;
-        debug_print("HYWOS 1.0.3 (x86_64 UEFI, Rust no_std)");
+        installer::set_image(image);
+        debug_print("HYWOS 1.0.4 (x86_64 UEFI, Rust no_std)");
         hw::firmware_vendor();
         debug_print("Firmware detected");
         bs_stall(60_000);
@@ -44,6 +47,25 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
         debug_print("[stage] gfx ok");
         g.clear(rgb(0, 0, 0));
         debug_print("[stage] clear ok");
+
+        let vols = fs::fs_init();
+        serial_print("[fs] volumes");
+        serial_u32(vols as u32);
+        debug_print("[stage] fs init done");
+        let mut vk = 0;
+        while vk < vols {
+            serial_print("[fs] probe vol");
+            serial_u32(vk as u32);
+            serial_print(if fs::exists_vol(vk, "\\HYWOS\\CD") { "cd=1" } else { "cd=0" });
+            serial_print(if fs::exists_vol(vk, "\\EFI\\BOOT\\BOOTX64.EFI") { "efi=1" } else { "efi=0" });
+            vk += 1;
+        }
+        if fs::is_install_media() {
+            debug_print("[stage] install media detected");
+            installer::run(&g);
+        }
+        fs::init_home();
+        debug_print("[stage] home ready");
 
         let mut boot = anim::BootAnim::new(&g);
         debug_print("[stage] boot anim begin");
@@ -67,12 +89,6 @@ pub extern "efiapi" fn efi_main(_image: Handle, systab: *mut SystemTable) -> Sta
         icon::preload();
         debug_print("[stage] icon preload done");
 
-        let vols = fs::fs_init();
-        serial_print("[fs] volumes");
-        serial_u32(vols as u32);
-        debug_print("[stage] fs init done");
-        fs::init_home();
-        debug_print("[stage] home ready");
         hw::acpi_probe();
         debug_print("[stage] acpi done");
         hw::net_probe();

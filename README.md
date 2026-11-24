@@ -1,4 +1,4 @@
-# HYWOS 1.0.5 «星河 · 安装修复版»
+# HYWOS 1.0.6 «星河 · 安装进度版»
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
@@ -29,6 +29,13 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 - [设计说明](#设计说明)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
+
+## 1.0.6 新变化
+
+- **安装程序进度条**：命令行安装界面新增进度条与百分比，按阶段显示
+  「写入 MBR 与 FAT16 引导分区」→「复制 BOOTX64.EFI 到 ESP」→「完成」，
+  每阶段刷新并短暂停顿，便于观察安装过程。
+- 版本号升级到 1.0.6。
 
 ## 1.0.5 新变化
 
@@ -141,9 +148,13 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 |---|---|---|
 | ![启动动画](docs/screenshots/boot-large.png) | ![安装程序](docs/screenshots/installer.png) |
 
-| 安装完成 | 桌面（从硬盘启动） |
+| 安装进度 | 安装完成 |
 |---|---|
-| ![安装完成](docs/screenshots/install-done.png) | ![桌面](docs/screenshots/desktop.png) |
+| ![安装进度](docs/screenshots/progress.png) | ![安装完成](docs/screenshots/install-done.png) |
+
+| 桌面（从硬盘启动） |
+|---|
+| ![桌面](docs/screenshots/desktop.png) |
 
 | Launchpad | 天气 |
 |---|---|

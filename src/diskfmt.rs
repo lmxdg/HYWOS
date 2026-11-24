@@ -305,7 +305,11 @@ unsafe fn set_fat(cluster: u16, val: u16) {
     put16(f, cluster as usize * 2, val);
 }
 
-unsafe fn format(t: &Target, clusters_needed: u32) -> bool {
+pub type ProgFn = unsafe fn(u32);
+
+unsafe fn noop_prog(_p: u32) {}
+
+unsafe fn format(t: &Target, clusters_needed: u32, cb: ProgFn) -> bool {
     build_mbr(t.bs, t.part_secs);
     build_bpb(t.part_secs);
     let mbr = core::ptr::addr_of_mut!(MBR) as *mut u8;
@@ -316,6 +320,7 @@ unsafe fn format(t: &Target, clusters_needed: u32) -> bool {
     if !wr(t, PART_START, bpb, 512) {
         return false;
     }
+    cb(6);
     let fat = core::ptr::addr_of_mut!(FATBUF) as *mut u8;
     clear(fat, 65536);
     put16(fat, 0, 0xFFF8);
@@ -335,12 +340,14 @@ unsafe fn format(t: &Target, clusters_needed: u32) -> bool {
     if !wr(t, PART_START + 1 + FAT_SECS as u64, fat, 65536) {
         return false;
     }
+    cb(18);
     let root = core::ptr::addr_of_mut!(ROOTBUF) as *mut u8;
     clear(root, 16384);
     dir_item(root, 0, b"EFI        ", 0x10, 2, 0);
     if !wr(t, PART_START + ROOT_SEC_START as u64, root, 16384) {
         return false;
     }
+    cb(26);
     let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
     clear(clus, 4096);
     dir_item(clus, 0, b".          ", 0x10, 2, 0);
@@ -357,7 +364,7 @@ pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
     if clusters_needed + 4 > 32760 {
         return false;
     }
-    if !format(t, clusters_needed as u32) {
+    if !format(t, clusters_needed as u32, noop_prog) {
         return false;
     }
     let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
@@ -390,12 +397,12 @@ pub unsafe fn install(t: &Target, image: *const u8, size: usize) -> bool {
     true
 }
 
-pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: usize) -> bool {
+pub unsafe fn install_file_p(t: &Target, f: *mut crate::fs::FileProtocol, size: usize, cb: ProgFn) -> bool {
     let clusters_needed = (size + 4095) / 4096;
     if clusters_needed + 4 > 32760 {
         return false;
     }
-    if !format(t, clusters_needed as u32) {
+    if !format(t, clusters_needed as u32, cb) {
         return false;
     }
     let clus = core::ptr::addr_of_mut!(CLUSBUF) as *mut u8;
@@ -406,6 +413,7 @@ pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: us
     if !wr(t, PART_START + (DATA_START + SPC) as u64, clus, 4096) {
         return false;
     }
+    cb(32);
     let chunk = core::ptr::addr_of_mut!(CHUNK) as *mut u8;
     let mut off = 0usize;
     let mut cluster = 4u64;
@@ -431,10 +439,17 @@ pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: us
             cluster += 1;
         }
         off += got;
+        let pct = 32 + (off * 62 / if size == 0 { 1 } else { size }) as u32;
+        cb(if pct > 94 { 94 } else { pct });
     }
+    cb(100);
     let fl: extern "efiapi" fn(*mut BlockIo) -> Status = core::mem::transmute((*t.bio).flush);
     fl(t.bio);
     true
+}
+
+pub unsafe fn install_file(t: &Target, f: *mut crate::fs::FileProtocol, size: usize) -> bool {
+    install_file_p(t, f, size, noop_prog)
 }
 
 pub unsafe fn target_info(t: &Target) -> (u64, u64) {

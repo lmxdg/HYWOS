@@ -58,9 +58,9 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.5 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.6 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
-    line(g, 140, "安装介质 : HYWOS 1.0.5 ISO（UEFI 启动）", rgb(170, 190, 220));
+    line(g, 140, "安装介质 : HYWOS 1.0.6 ISO（UEFI 启动）", rgb(170, 190, 220));
     let mut b = [0u8; 96];
     let mut l = 0;
     for ch in "目标磁盘 : ".as_bytes().iter() { b[l] = *ch; l += 1; }
@@ -87,13 +87,63 @@ unsafe fn screen_msg(g: &Gfx, title: &str, body: &str, color: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.0.5 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.0.6 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, title, color, 2);
     let mut y = 260;
     for part in body.split('\n') {
         g.text(64, y, part, rgb(190, 205, 230), 2);
         y += 44;
+    }
+}
+
+static mut PROG_G: *const Gfx = core::ptr::null();
+
+unsafe fn draw_progress(p: u32) {
+    if PROG_G.is_null() {
+        return;
+    }
+    let g = &*PROG_G;
+    g.clear(rgb(6, 8, 14));
+    let mut x = 64;
+    for ch in "HYWOS".bytes() {
+        big2(g, x, 60, ch, rgb(150, 210, 255), 255);
+        x += 32;
+    }
+    g.text(64 + 5 * 32 + 16, 76, "1.0.6 安装程序", rgb(220, 236, 255), 2);
+    g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
+    g.text(64, 200, "正在安装 HYWOS…", rgb(150, 210, 255), 2);
+    let bx = 64;
+    let by = 290;
+    let bw = g.w as i32 - 128;
+    let bh = 34;
+    g.round_rect(bx, by, bw, bh, 17, rgb(20, 28, 44), 255);
+    let fill = (bw - 4) * p as i32 / 100;
+    if fill > 4 {
+        g.round_rect(bx + 2, by + 2, fill, bh - 4, 15, rgb(64, 140, 255), 255);
+        g.round_rect(bx + 2, by + 2, fill, (bh - 4) / 2, 15, rgb(132, 182, 255), 70);
+    }
+    let mut t = [0u8; 8];
+    let mut l = 0;
+    l += crate::hw::num2(&mut t[l..], p, 1);
+    t[l] = b'%';
+    l += 1;
+    g.text(bx + bw - 84, by + 9, core::str::from_utf8_unchecked(&t[..l]), rgb(224, 238, 255), 2);
+    let stage = if p < 30 {
+        "写入 MBR 与 FAT16 引导分区"
+    } else if p < 95 {
+        "复制 BOOTX64.EFI 到 ESP"
+    } else {
+        "完成"
+    };
+    g.text(64, by + 62, stage, rgb(170, 190, 220), 2);
+    g.text(64, 640, "请勿关闭电源或移除磁盘", rgb(140, 160, 190), 2);
+}
+
+unsafe fn prog_cb(p: u32) {
+    draw_progress(p);
+    if p < 100 {
+        bs_stall(120_000);
     }
 }
 
@@ -190,11 +240,12 @@ pub unsafe fn run(g: &Gfx) -> ! {
         }
     }
     screen_msg(g, "正在安装 HYWOS…", "写入分区表与 FAT16 引导分区\n复制 BOOTX64.EFI 到 ESP", rgb(150, 210, 255));
+    PROG_G = g;
     let ok = match fs::open_sys("\\EFI\\BOOT\\BOOTX64.EFI") {
         Some(f) => {
             let sz = fs::file_size(f);
             let r = match sz {
-                Some(n) => diskfmt::install_file(&t, f, n),
+                Some(n) => diskfmt::install_file_p(&t, f, n, prog_cb),
                 None => false,
             };
             fs::close_f(f);

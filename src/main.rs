@@ -95,8 +95,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         debug_print("[stage] net done");
         input::init();
         hw::pointer_init();
-        ps2::init();
-        serial_print("[input] PS/2 initialized");
+        serial_print("[input] firmware input kept in control");
         audio::init();
         debug_print("[stage] pointer done");
         hw::cache_time();

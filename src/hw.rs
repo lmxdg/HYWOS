@@ -182,17 +182,9 @@ impl InputState {
                 core::mem::transmute(f2);
             let mut s: *mut PointerState = core::ptr::null_mut();
             if call(POINTER, &mut s) == EFI_SUCCESS && !s.is_null() {
-                let mut dx = (*s).relative_x;
-                let mut dy = (*s).relative_y;
                 let dz = (*s).relative_z;
-                if dx.abs() > 150 || dy.abs() > 150 {
-                    dx = 0;
-                    dy = 0;
-                }
-                if dx > 45 { dx = 45; }
-                if dx < -45 { dx = -45; }
-                if dy > 45 { dy = 45; }
-                if dy < -45 { dy = -45; }
+                let dx = (*s).relative_x;
+                let dy = (*s).relative_y;
                 if dx != 0 || dy != 0 {
                     self.x += dx;
                     self.y += dy;
@@ -205,6 +197,12 @@ impl InputState {
                 if dz != 0 { self.scroll += dz; }
                 self.left = (*s).left != 0;
                 self.right = (*s).right != 0;
+                if dx != 0 || dy != 0 || self.left {
+                    serial_print("[ptr] dx/dy/btn");
+                    serial_u32(dx as u32);
+                    serial_u32(dy as u32);
+                    serial_u32(self.left as u32);
+                }
             }
             self.finish_buttons();
             return;

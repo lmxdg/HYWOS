@@ -285,24 +285,29 @@ pub fn read_key() -> Option<(u16, u16)> {
         if let Some(k) = crate::ps2::take_key() {
             return Some(k);
         }
-        if let Some(k) = crate::input::read_key_ex() {
-            return Some(k);
-        }
     }
     unsafe {
         let st = &*ST;
-        if st.con_in.is_null() { return None; }
-        let f: extern "efiapi" fn(*mut SimpleTextInput, *mut InputKey) -> Status =
-            core::mem::transmute((*st.con_in).read_key_stroke);
-        let mut k = InputKey { scan_code: 0, unicode_char: 0 };
-        if f(st.con_in, &mut k) == EFI_SUCCESS {
-            Some((k.scan_code, k.unicode_char))
-        } else {
-            None
+        if !st.con_in.is_null() {
+            let f: extern "efiapi" fn(*mut SimpleTextInput, *mut InputKey) -> Status =
+                core::mem::transmute((*st.con_in).read_key_stroke);
+            let mut k = InputKey { scan_code: 0, unicode_char: 0 };
+            if f(st.con_in, &mut k) == EFI_SUCCESS {
+                serial_print("[key] conin");
+                serial_u32(k.scan_code as u32);
+                serial_u32(k.unicode_char as u32);
+                return Some((k.scan_code, k.unicode_char));
+            }
+        }
+        if let Some(k) = crate::input::read_key_ex() {
+            serial_print("[key] ex");
+            serial_u32(k.0 as u32);
+            serial_u32(k.1 as u32);
+            return Some(k);
         }
     }
+    None
 }
-
 pub unsafe fn to_utf16(src: &str, dst: &mut [u16]) -> usize {
     let b = src.as_bytes();
     let mut i = 0;

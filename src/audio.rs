@@ -31,6 +31,9 @@ pub unsafe fn init() -> bool {
     if !i0 || !i1 || nam == 0 || nabm == 0 {
         return false;
     }
+    serial_print("[audio] nam/nabm");
+    serial_u32(nam as u32);
+    serial_u32(nabm as u32);
     NAM = nam as u16;
     NABM = nabm as u16;
     enable_bus_master(&d);

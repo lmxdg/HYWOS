@@ -700,9 +700,9 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
             g.text(cx, cy + 34, "当前版本 1.0.7 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
-            btn(g, cx, by, 140, 34, "检查更新", true);
+            btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
-            btn(g, cx + 152, by, 160, 34, if can_dl { "下载并安装" } else { "等待检查" }, can_dl);
+            btn(g, cx + 152, by, 160, 34, if can_dl { "下载并安装 (D)" } else { "等待检查" }, can_dl);
             let status = match s.update_state {
                 1 => "已是最新版本",
                 2 => "发现新版本，可下载并安装",
@@ -1067,8 +1067,28 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
     if id == AppId::Terminal {
         return st.term.key(scan, ch);
     }
-    if id == AppId::Settings && st.settings.page == 2 && scan == 0x16 {
-        return AppAction::OpenUpdate;
+    if id == AppId::Settings {
+        if scan == 0x04 && st.settings.page > 0 {
+            st.settings.page -= 1;
+            return AppAction::None;
+        }
+        if scan == 0x03 && st.settings.page < 3 {
+            st.settings.page += 1;
+            return AppAction::None;
+        }
+        if st.settings.page == 2 {
+            if ch == b'c' as u16 || ch == b'C' as u16 {
+                do_check_update(&mut st.settings);
+                return AppAction::None;
+            }
+            if ch == b'd' as u16 || ch == b'D' as u16 {
+                do_download_update(&mut st.settings);
+                return AppAction::None;
+            }
+            if scan == 0x16 {
+                return AppAction::OpenUpdate;
+            }
+        }
     }
     if id == AppId::Weather && ch == b'u' as u16 {
         st.weather.unit_f = !st.weather.unit_f;

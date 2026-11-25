@@ -173,18 +173,17 @@ pub unsafe fn fs_init() -> usize {
             j += 1;
         }
         let mut usr = sys;
-        if !any {
+        let mut k = 0;
+        while k < count {
+            if k != sys && !exists_vol(k, "\\EFI") {
+                usr = k;
+                break;
+            }
+            k += 1;
+        }
+        if !any && count <= 1 {
             USE_RAM = true;
             serial_print("[fs] no writable volume, RAM fallback");
-        } else {
-            let mut k = 0;
-            while k < count {
-                if k != sys && !exists_vol(k, "\\EFI") && vol_writable(k) {
-                    usr = k;
-                    break;
-                }
-                k += 1;
-            }
         }
         USR_VOL = usr;
         serial_print("[fs] sys index");
@@ -355,7 +354,7 @@ unsafe fn mkdirs(vol: usize, path: &str) {
         if c == b'\\' {
             if clen > 0 {
                 let name = core::str::from_utf8_unchecked(&cur[..clen]);
-                let f = open_on(VOLS[vol], name, MODE_CREATE | MODE_WRITE, ATTR_DIR);
+                let f = open_on(VOLS[vol], name, MODE_READ | MODE_WRITE | MODE_CREATE, ATTR_DIR);
                 if !f.is_null() { close(f); }
             }
         } else if clen < 158 {
@@ -366,7 +365,7 @@ unsafe fn mkdirs(vol: usize, path: &str) {
     }
     if clen > 0 {
         let name = core::str::from_utf8_unchecked(&cur[..clen]);
-        let f = open_on(VOLS[vol], name, MODE_CREATE | MODE_WRITE, ATTR_DIR);
+        let f = open_on(VOLS[vol], name, MODE_READ | MODE_WRITE | MODE_CREATE, ATTR_DIR);
         if !f.is_null() { close(f); }
     }
 }
@@ -403,7 +402,7 @@ pub unsafe fn write_file(vol: usize, path: &str, data: &[u8]) -> bool {
     if USE_RAM { return ram_write(path, data); }
     let parent = parent_of(path);
     if !parent.is_empty() { mkdirs(vol, parent.as_str()); }
-    let f = open_on(VOLS[vol], path, MODE_WRITE | MODE_CREATE, 0);
+    let f = open_on(VOLS[vol], path, MODE_READ | MODE_WRITE | MODE_CREATE, 0);
     if f.is_null() { return false; }
     let w: extern "efiapi" fn(*mut FileProtocol, *mut usize, *mut u8) -> Status =
         core::mem::transmute((*f).write);
@@ -446,7 +445,7 @@ pub unsafe fn append_file(vol: usize, path: &str, data: &[u8]) -> bool {
     if let Some(n) = read_file(vol, path) {
         existing_len = n;
     }
-    let f = open_on(VOLS[vol], path, MODE_WRITE | MODE_CREATE, 0);
+    let f = open_on(VOLS[vol], path, MODE_READ | MODE_WRITE | MODE_CREATE, 0);
     if f.is_null() { return false; }
     let sp: extern "efiapi" fn(*mut FileProtocol, u64) -> Status = core::mem::transmute((*f).set_position);
     sp(f, existing_len as u64);
@@ -471,7 +470,7 @@ pub unsafe fn append_file(vol: usize, path: &str, data: &[u8]) -> bool {
 
 pub unsafe fn delete_file(vol: usize, path: &str) -> bool {
     if USE_RAM { return ram_delete(path); }
-    let f = open_on(VOLS[vol], path, MODE_WRITE, 0);
+    let f = open_on(VOLS[vol], path, MODE_READ | MODE_WRITE, 0);
     if f.is_null() { return false; }
     let d: extern "efiapi" fn(*mut FileProtocol) -> Status = core::mem::transmute((*f).delete);
     let st = d(f);

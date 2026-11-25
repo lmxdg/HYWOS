@@ -88,6 +88,7 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
     g.rect(64, 468, 300, 48, rgb(20, 60, 120), 220);
     line(g, 476, "  [ Enter ] 安装    [ N ] 取消  ", rgb(200, 230, 255));
     line(g, 548, "ISO 不会直接进入桌面：确认后才复制系统并创建引导。", rgb(140, 160, 190));
+    line(g, 640, "FAT16 引导分区上限 128 MB，系统文件不足 2 MB。", rgb(140, 160, 190));
     line(g, 680, "HYWOS Installer · 命令行安装模式", rgb(110, 130, 160));
 }
 
@@ -157,7 +158,13 @@ unsafe fn draw_progress(p: u32) {
     g.text(64, 640, "请勿关闭电源或移除磁盘", rgb(140, 160, 190), 2);
 }
 
+static mut PROG_LAST: u32 = 0xFFFF_FFFF;
+
 unsafe fn prog_cb(p: u32) {
+    if p == PROG_LAST {
+        return;
+    }
+    PROG_LAST = p;
     draw_progress(p);
     if p < 100 {
         bs_stall(120_000);
@@ -260,7 +267,7 @@ pub unsafe fn run(g: &Gfx) -> ! {
                 chosen = true;
                 break;
             }
-            if ch == b'n' as u16 || ch == b'N' as u16 || ch == 0x1b {
+            if ch == b'n' as u16 || ch == b'N' as u16 || _scan == 0x17 {
                 break;
             }
         }

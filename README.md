@@ -37,8 +37,11 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
   并在硬盘写入 `\HYWOS\INSTALL.TXT`。从硬盘启动时不会再被 ISO 残留设备误判。
 - **安装流程重写**：ISO 启动先询问是否安装；确认后先把内核、系统资源、
   版本文件与安装标记**全部复制到本地磁盘**，最后才创建 FAT16 引导分区与 MBR 引导记录。
-- **设置中新增在线更新**：读取 GitHub Releases 列表，与本地版本 1.0.7 比较；
-  发现新版本可下载 `.updpkg` 并应用，支持离线 `\updates\latest.json` 回退。
+- **设置中新增在线更新**：通过 UEFI HTTP 协议读取 GitHub Releases 列表，与本地版本
+  1.0.7 比较；发现新版本可下载 `.updpkg` 并应用，支持离线 `\updates\latest.json`
+  回退与本地同版本包扫描。无指针设备时可用键盘 `←` / `→` 切页、`C` 检查、`D` 更新。
+- **修复卷写入**：文件打开模式改为 `READ|WRITE`（FatPkg 只接受此组合），
+  安装盘与用户卷现在可正常创建、替换文件，更新包能真实写入内核。
 - 版本号升级到 1.0.7。
 
 ## 1.0.6 新变化
@@ -173,9 +176,13 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 |---|---|
 | ![Launchpad](docs/screenshots/launchpad.png) | ![天气](docs/screenshots/weather.png) |
 
-| 设置 · 权限 | 应用商店 |
+| 设置 · 权限 | 设置 · 软件更新 |
 |---|---|
-| ![设置](docs/screenshots/settings.png) | ![商店](docs/screenshots/store.png) |
+| ![设置](docs/screenshots/settings.png) | ![软件更新](docs/screenshots/update.png) |
+
+| 应用商店 |
+|---|
+| ![商店](docs/screenshots/store.png) |
 
 | 关于本机（驱动信息） | 终端 |
 |---|---|
@@ -186,8 +193,9 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 | ![文件](docs/screenshots/files.png) |
 
 截图由 QEMU 运行 `hywos.iso` 安装后、从硬盘启动，通过 VNC 抓取 framebuffer 原始画面，
-未做修图。全部截图由 **QEMU 11.1.3** 运行 HYWOS 1.0.5 生成：
-命令行安装 → 从硬盘 ESP 启动 → 使用 F1–F8 切换各界面。
+未做修图。全部截图由 **QEMU 11.1.3** 运行 HYWOS 1.0.7 生成：
+ISO 启动询问 → Enter 安装 → 复制系统文件 → 创建 FAT16 引导分区 →
+移除 ISO 从硬盘启动 → 使用 F1–F8 切换各界面。
 
 ## 快捷键
 
@@ -202,6 +210,9 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 | `F7` | 终端 |
 | `F12` | 截屏 |
 | `Esc` | 关闭启动台或当前窗口 |
+
+设置窗口内：`←` / `→` 切换页面；在「软件更新」页按 `C` 检查更新、`D` 下载并安装。
+安装程序界面：`Enter` 开始安装，`N` 或 `Esc` 取消且不修改磁盘。
 
 启动台打开时直接键入即可过滤，匹配中文名称与英文 ID；`Enter` 启动第一项。
 

@@ -131,8 +131,12 @@ fn find_asset(data: &[u8], start: usize, end: usize) -> Option<(usize, usize)> {
                     let slice = &data[s0..p];
                     let mut has = false;
                     let mut q = 0;
-                    while q + 7 <= slice.len() {
-                        if &slice[q..q + 7] == b".updpkg" { has = true; break; }
+                    while q + 4 <= slice.len() {
+                        let tail = &slice[q..];
+                        if tail.starts_with(b".updpkg") || tail.starts_with(b".upd") || tail.starts_with(b".UPD") {
+                            has = true;
+                            break;
+                        }
                         q += 1;
                     }
                     if has { return Some((s0, p - s0)); }
@@ -228,13 +232,9 @@ pub unsafe fn check_update() -> Check {
     let mut seen_code = 0u32;
     let mut seen = Release::empty();
     let mut any = false;
-    let mut cache = Str80::empty();
-    cache.push_str(UPDATE_DIR);
-    cache.push(b'\\');
-    cache.push_str("latest.json");
-    if let Some(n) = fs::read_file(fs::usr_vol(), cache.as_str()) {
-        let buf = fs::rdbuf();
-        let mut rel = Release::empty();
+    let mut rel = Release::empty();
+    let buf = &mut *core::ptr::addr_of_mut!(NETBUF);
+    if let Ok(n) = crate::http::get(RELEASES_API, buf) {
         if let Some(code) = evaluate(&buf[..n], &mut rel) {
             if code > local {
                 return Check::Available(rel);
@@ -246,9 +246,13 @@ pub unsafe fn check_update() -> Check {
             }
         }
     }
-    let mut rel = Release::empty();
-    let buf = &mut *core::ptr::addr_of_mut!(NETBUF);
-    if let Ok(n) = crate::http::get(RELEASES_API, buf) {
+    let mut cache = Str80::empty();
+    cache.push_str(UPDATE_DIR);
+    cache.push(b'\\');
+    cache.push_str("latest.json");
+    if let Some(n) = fs::read_file(fs::usr_vol(), cache.as_str()) {
+        let buf = fs::rdbuf();
+        let mut rel = Release::empty();
         if let Some(code) = evaluate(&buf[..n], &mut rel) {
             if code > local {
                 return Check::Available(rel);
@@ -277,6 +281,30 @@ pub unsafe fn check_update() -> Check {
     Check::Error(1)
 }
 
+unsafe fn local_pkg_for(version: u32) -> Option<Str80> {
+    let mut dir = Str80::empty();
+    dir.push_str(UPDATE_DIR);
+    let mut ents: [fs::DirEntry; 32] = core::mem::zeroed();
+    let n = fs::list_dir(fs::usr_vol(), dir.as_str(), &mut ents);
+    let mut i = 0;
+    while i < n {
+        let name = ents[i].name.as_str();
+        let is_pkg = name.ends_with(".updpkg") || name.ends_with(".upd") || name.ends_with(".UPD");
+        if is_pkg {
+            let full = fs::path_join(dir.as_str(), name);
+            if let Some(len) = fs::read_file(fs::usr_vol(), full.as_str()) {
+                let buf = fs::rdbuf();
+                let info = fs::parse_updpkg(&buf[..len]);
+                if info.valid && info.version == version {
+                    return Some(full);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 pub unsafe fn download_and_apply(rel: &Release) -> u8 {
     if rel.url_len == 0 {
         return 10;
@@ -286,10 +314,14 @@ pub unsafe fn download_and_apply(rel: &Release) -> u8 {
     fs::ensure_dir(fs::usr_vol(), dir.as_str());
     let url = core::str::from_utf8_unchecked(&rel.url[..rel.url_len]);
     if url.starts_with('\\') {
-        return match fs::apply_update_file(fs::usr_vol(), url) {
-            4 => 11,
-            code => code,
-        };
+        let code = fs::apply_update_file(fs::usr_vol(), url);
+        if code != 4 && code != 1 {
+            return code;
+        }
+        if let Some(p) = local_pkg_for(rel.version_code()) {
+            return fs::apply_update_file(fs::usr_vol(), p.as_str());
+        }
+        return 11;
     }
     let mut name = Str80::empty();
     name.push_str(dir.as_str());

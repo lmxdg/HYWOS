@@ -68,9 +68,9 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.7 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.0.8 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
-    line(g, 140, "安装介质 : HYWOS 1.0.7 ISO（UEFI 启动）", rgb(170, 190, 220));
+    line(g, 140, "安装介质 : HYWOS 1.0.8 ISO（UEFI 启动）", rgb(170, 190, 220));
     let mut b = [0u8; 96];
     let mut l = 0;
     for ch in "目标磁盘 : ".as_bytes().iter() { b[l] = *ch; l += 1; }
@@ -99,7 +99,7 @@ unsafe fn screen_msg(g: &Gfx, title: &str, body: &str, color: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.0.7 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.0.8 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, title, color, 2);
     let mut y = 260;
@@ -122,7 +122,7 @@ unsafe fn draw_progress(p: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.0.7 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.0.8 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, "正在安装 HYWOS…", rgb(150, 210, 255), 2);
     let bx = 64;
@@ -319,12 +319,12 @@ pub unsafe fn run(g: &Gfx) -> ! {
     }
     files[n].dir = diskfmt::DIR_HYWOS;
     files[n].name = *b"VERSION    ";
-    files[n].data = b"HYWOS 1.0.7\n";
+    files[n].data = b"HYWOS 1.0.8\n";
     files[n].size = files[n].data.len();
     n += 1;
     files[n].dir = diskfmt::DIR_HYWOS;
     files[n].name = *b"INSTALL TXT";
-    files[n].data = b"HYWOS 1.0.7 installed\n";
+    files[n].data = b"HYWOS 1.0.8 installed\n";
     files[n].size = files[n].data.len();
     n += 1;
     let ok = diskfmt::install_system(&t, &files[..n], prog_cb);

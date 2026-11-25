@@ -35,12 +35,12 @@ echo "creating usb.img (user volume, MBR + FAT32)"
 dd if=/dev/zero of=build/usb.img bs=1M count=64 status=none
 printf 'label: dos\nstart=2048, size=129024, type=0c, bootable\n' | sfdisk -q build/usb.img
 mkfs.fat -F 32 --offset 2048 build/usb.img 64512 >/dev/null
-python3 tools/make_updpkg.py build/hywos-1.0.7.updpkg 1.0.7 "$EFI"
+python3 tools/make_updpkg.py build/hywos-1.0.8.updpkg 1.0.8 "$EFI"
 IMG="build/usb.img@@1M"
 mmd -i "$IMG" ::/Documents
 mmd -i "$IMG" ::/Pictures
 mmd -i "$IMG" ::/updates
-mcopy -i "$IMG" build/hywos-1.0.7.updpkg ::/hywos-1.0.7.updpkg
+mcopy -i "$IMG" build/hywos-1.0.8.updpkg ::/hywos-1.0.8.updpkg
 mcopy -i "$IMG" tools/welcome.txt ::/Documents/welcome.txt
 mcopy -i "$IMG" tools/welcome.txt ::/updates/readme.txt
 mcopy -i "$IMG" tools/latest.json ::/updates/latest.json
@@ -56,4 +56,4 @@ xorriso -as mkisofs -R -J -V HYWOS \
   -e efiboot.img -no-emul-boot -isohybrid-gpt-basdat \
   build/iso >/dev/null
 
-ls -lh build/hywos.iso build/efiboot.img build/usb.img build/kdisk.img build/hywos-1.0.7.updpkg
+ls -lh build/hywos.iso build/efiboot.img build/usb.img build/kdisk.img build/hywos-1.0.8.updpkg

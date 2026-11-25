@@ -37,9 +37,10 @@ pub struct Win {
 }
 
 static mut WINS: [Win; 3] = unsafe { core::mem::zeroed() };
-static mut BG: [u32; 1024 * 768] = [0; 1024 * 768];
-static mut SNAP: [u32; 1024 * 768] = [0; 1024 * 768];
-static mut BACK: [u32; 1024 * 768] = [0; 1024 * 768];
+pub const UI_MAX_PIX: usize = 1920 * 1080;
+static mut BG: [u32; UI_MAX_PIX] = [0; UI_MAX_PIX];
+static mut SNAP: [u32; UI_MAX_PIX] = [0; UI_MAX_PIX];
+static mut BACK: [u32; UI_MAX_PIX] = [0; UI_MAX_PIX];
 static mut BG_OK: bool = false;
 static mut FOCUS: usize = 0;
 static mut SHOT_MSG: [u8; 64] = [0; 64];
@@ -64,7 +65,7 @@ impl Ui {
         let cy = front.h as i32 / 2;
         let n = front.w * front.h;
         let back_ptr = core::ptr::addr_of_mut!(BACK) as *mut u32;
-        let g = if n <= 1024 * 768 {
+        let g = if n <= UI_MAX_PIX {
             Gfx { fb: back_ptr, w: front.w, h: front.h, stride: front.w, swap: false, ok: front.ok }
         } else {
             Gfx { fb: front.fb, w: front.w, h: front.h, stride: front.stride, swap: front.swap, ok: front.ok }
@@ -91,6 +92,10 @@ impl Ui {
         unsafe {
             let n = self.g.w * self.g.h;
             if n == 0 { return; }
+            if self.g.fb == self.front.fb {
+                self.front.flush();
+                return;
+            }
             let src = core::slice::from_raw_parts(self.g.fb, n);
             let swap = self.front.swap;
             let fw = self.front.w;
@@ -286,8 +291,8 @@ impl Ui {
         g.rect(0, 30, w, 1, rgb(255, 255, 255), 16);
         g.circle(18, 15, 7, rgb(110, 200, 255), 255);
         g.circle(18, 15, 3, rgb(230, 246, 255), 255);
-        g.text(32, 7, "HYWOS 1.0.7", rgb(232, 242, 255), 1);
-        g.text(32 + text_width("HYWOS 1.0.7", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
+        g.text(32, 7, "HYWOS 1.0.8", rgb(232, 242, 255), 1);
+        g.text(32 + text_width("HYWOS 1.0.8", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
         let c = hw::cpu();
         let mut b = [0u8; 64];
         let mut l = 0;
@@ -533,7 +538,7 @@ impl Ui {
     }
 
     unsafe fn take_screenshot(&mut self) {
-        if self.g.w > 1024 || self.g.h > 768 { return; }
+        if self.g.w * self.g.h > UI_MAX_PIX { return; }
         let n = self.g.w * self.g.h;
         let buf = core::slice::from_raw_parts(self.g.fb, self.g.stride * self.g.h);
         let snap = &mut *core::ptr::addr_of_mut!(SNAP);

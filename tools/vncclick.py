@@ -32,15 +32,19 @@ def main():
     namelen = struct.unpack(">I", hdr[20:24])[0]
     recvn(s, namelen)
 
-    def ev(mask):
-        s.sendall(struct.pack(">BBHH", 5, mask, x, y))
+    def ev(mask, px=None, py=None):
+        if px is None:
+            px, py = x, y
+        s.sendall(struct.pack(">BBHH", 5, mask, px, py))
 
+    ev(0, 1, 1)
+    time.sleep(0.2)
     ev(0)
-    time.sleep(0.4)
+    time.sleep(0.35)
     ev(1)
-    time.sleep(0.4)
+    time.sleep(0.35)
     ev(0)
-    time.sleep(0.3)
+    time.sleep(0.2)
     s.close()
     print("clicked %d,%d" % (x, y))
 

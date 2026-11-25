@@ -1,4 +1,4 @@
-HYWOS 1.0.7 "Harmony of Stars"
+HYWOS 1.0.8 "Harmony of Stars"
 =============================
 
 Welcome to HYWOS, a 64-bit operating system written in Rust.

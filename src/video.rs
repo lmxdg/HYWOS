@@ -133,15 +133,29 @@ unsafe fn svga_init() -> Option<Gfx> {
     if fb_io || fb == 0 {
         return None;
     }
+    let maxw = sreg(4);
+    let maxh = sreg(5);
+    if maxw < 640 || maxh < 480 {
+        return None;
+    }
+    let (tw, th) = if maxw >= 1024 && maxh >= 768 {
+        (1024u32, 768u32)
+    } else if maxw >= 800 && maxh >= 600 {
+        (800, 600)
+    } else {
+        (640, 480)
+    };
     sset(1, 0);
-    sset(2, 1024);
-    sset(3, 768);
+    sset(2, tw);
+    sset(3, th);
     sset(7, 32);
     sset(1, 1);
     let w = sreg(2) as usize;
     let h = sreg(3) as usize;
+    let bpp = sreg(7) as usize;
     let bpl = sreg(12) as usize;
-    if w < 640 || h < 480 {
+    if w < 640 || h < 480 || bpp != 32 {
+        sset(1, 0);
         return None;
     }
     let stride = if bpl >= w * 4 { bpl / 4 } else { w };
@@ -153,9 +167,9 @@ unsafe fn svga_flush() {
     if SVGA_IO == 0 {
         return;
     }
-    sset(0x41, 1);
+    sset(0x15, 1);
     let mut guard = 0u32;
-    while sreg(0x42) != 0 && guard < 2_000_000 {
+    while sreg(0x16) != 0 && guard < 2_000_000 {
         guard += 1;
     }
 }

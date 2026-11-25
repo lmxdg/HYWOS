@@ -152,19 +152,19 @@ impl BootAnim {
             let t = ease((f - 50) as f32 / 22.0);
             let rx = 142.0 + (11.0 - 142.0) * t;
             let ry = 104.0 + (19.0 - 104.0) * t;
-            let ox = self.cx as f32 + ((self.tx as f32 + 112.0) - self.cx as f32) * t;
-            let oy = self.cy as f32 + ((self.ty as f32 + 32.0) - self.cy as f32) * t;
+            let ox = self.cx as f32 + ((self.tx as f32 + 56.0) - self.cx as f32) * t;
+            let oy = self.cy as f32 + ((self.ty as f32 + 16.0) - self.cy as f32) * t;
             (
                 ox + cosf(p.ang) * rx,
                 oy + sinf(p.ang) * ry,
                 (235.0 - 90.0 * t) as u8,
             )
         } else {
-            let ox = self.tx as f32 + 112.0;
-            let oy = self.ty as f32 + 32.0;
+            let ox = self.tx as f32 + 56.0;
+            let oy = self.ty as f32 + 16.0;
             (
-                ox + cosf(p.ang) * 11.0,
-                oy + sinf(p.ang) * 19.0,
+                ox + cosf(p.ang) * 9.0,
+                oy + sinf(p.ang) * 17.0,
                 150,
             )
         }

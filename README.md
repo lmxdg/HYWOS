@@ -1,4 +1,4 @@
-# HYWOS 1.0.7 «星河 · 安装与在线更新版»
+# HYWOS 1.0.8 «星河 · 显示与输入增强版»
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
@@ -12,6 +12,7 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 
 ## 目录
 
+- [1.0.8 新变化](#108-新变化)
 - [1.0.7 新变化](#107-新变化)
 - [1.0.2 新变化](#102-新变化)
 - [硬件驱动](#硬件驱动)
@@ -30,6 +31,26 @@ HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第�
 - [设计说明](#设计说明)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
+
+## 1.0.8 新变化
+
+- **修复高分辨率下桌面空白**：UI 合成缓冲原先固定为 1024×768，VMware 常见的
+  1280×800 / 1920×1080 会退化为直接绘制，并在刷新时错位自拷贝；现缓冲提升到
+  1920×1080，同缓冲刷新直接 flush，非 1024 分辨率桌面完整显示。
+- **修复启动动画的 O**：粒子 O 对齐到 `HYWOS` 中第 4 个字母的位置，不再落在 S 右侧。
+- **VMware SVGA II 加固**：读取 `SVGA_REG_MAX_WIDTH/HEIGHT` 选择安全模式，
+  校验 32bpp 后启用，并修正 `SYNC/BUSY` 寄存器（0x15/0x16）。
+- **重写 PS/2 驱动**：补上键盘使能与 `KBD_OK` 状态；扫描码/字符队列改为 32 位
+  （原实现截断为 16 位，功能键丢失）；规范鼠标复位/采样率/使能顺序；
+  大位移改为钳制而非丢弃；支持左右键、Shift/Caps、方向键与 F1–F12。
+- **PS/2 在桌面可用**：固件无指针协议时自动启用 PS/2 鼠标；固件键盘连续 3 次
+  未消费 8042 数据或 `ConIn` 返回错误时自动接管 PS/2 键盘。
+- **新增 USB HID 驱动**：基于 `EFI_USB_IO_PROTOCOL`，解析接口/端点与 HID 报告
+  描述符，支持启动协议键盘（8 字节）、相对鼠标（3/4 字节）与绝对鼠标
+  （16 位轴、0x7FFF 范围）；仅在固件未提供对应驱动时接管，避免争抢。
+- **现代键鼠优先级**：`ConIn`（先 CheckEvent）→ `SimpleTextInputEx` →
+  `AbsolutePointer` → `SimplePointer` → PS/2 → USB HID；关于本机显示实际输入路径。
+- 版本号升级到 1.0.8。
 
 ## 1.0.7 新变化
 
@@ -145,7 +166,7 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 | 语言 | Rust 1.100，`no_std`，零外部依赖，手写 EFI/PCI/驱动 |
 | 中文 | 6786 字 GB2312 点阵，UTF-8 混排渲染，中文界面 |
 | 显卡 | VBE、virtio-gpu、VMware SVGA II、UEFI GOP 回退 |
-| 输入 | PS/2 8042 键鼠 + UEFI SimplePointer 回退 |
+| 输入 | PS/2 8042、UEFI Ex/绝对指针/SimplePointer、USB HID（EFI_USB_IO） |
 | 音频 | Intel AC'97 DMA 播放 + PC Speaker 回退 |
 | 图形 | 双缓冲合成器，圆角/渐变/抗锯齿/阴影 |
 | 开机动画 | 星河主题：星点汇聚、双层光环、徽标淡入、中文副标 |
@@ -193,7 +214,7 @@ UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使�
 | ![文件](docs/screenshots/files.png) |
 
 截图由 QEMU 运行 `hywos.iso` 安装后、从硬盘启动，通过 VNC 抓取 framebuffer 原始画面，
-未做修图。全部截图由 **QEMU 11.1.3** 运行 HYWOS 1.0.7 生成：
+未做修图。全部截图由 **QEMU 11.1.3** 运行 HYWOS 1.0.8 生成：
 ISO 启动询问 → Enter 安装 → 复制系统文件 → 创建 FAT16 引导分区 →
 移除 ISO 从硬盘启动 → 使用 F1–F8 切换各界面。
 
@@ -263,7 +284,7 @@ F12 / Print Screen 抓取 24 位 BMP，编号递增，状态栏提示；
 
 `设置 → 软件更新 → 检查更新` 会请求 GitHub Releases 列表
 （`https://api.github.com/repos/lmxdg/HYWOS/releases`），解析 `tag_name`
-并与本地 1.0.7 比较。发现新版本后可从 `browser_download_url` 下载 `.updpkg`，
+并与本地 1.0.8 比较。发现新版本后可从 `browser_download_url` 下载 `.updpkg`，
 保存到 `\updates\hywos-<版本>.updpkg` 后应用。固件没有 HTTP/TLS 服务或网络
 未配置时，会读取 `\updates\latest.json` 并扫描 `\updates` 中的更新包作为离线回退。
 
@@ -283,7 +304,7 @@ python3 tools/gen_logo_data.py
 ```
 
 产物：`build/hywos.iso`、`build/efiboot.img`、`build/usb.img`、
-`build/kdisk.img`、`build/hywos-1.0.7.updpkg`。
+`build/kdisk.img`、`build/hywos-1.0.8.updpkg`。
 
 ## 在 QEMU 中运行
 

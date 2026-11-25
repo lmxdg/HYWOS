@@ -143,14 +143,46 @@ pub unsafe fn abs_mouse(w: i32, h: i32) -> Option<(i32, i32, u8, bool)> {
     Some((sx, sy, (st.buttons & 3) as u8, moved))
 }
 
+static mut DESC: [u8; 80] = [0; 80];
+
+fn put(dst: &mut [u8], l: &mut usize, s: &str) {
+    for c in s.bytes() {
+        if *l < dst.len() - 1 {
+            dst[*l] = c;
+            *l += 1;
+        }
+    }
+}
+
 pub fn describe() -> &'static str {
-    if modern_keyboard() && absolute_pointer() {
-        "UEFI 现代键鼠（Ex + 绝对指针）"
-    } else if modern_keyboard() {
-        "UEFI 现代键盘 + 指针回退"
-    } else if absolute_pointer() {
-        "UEFI 绝对指针 + 旧键盘"
-    } else {
-        "UEFI 固件输入"
+    unsafe {
+        let d = &mut *core::ptr::addr_of_mut!(DESC);
+        let mut l = 0usize;
+        let kb = if modern_keyboard() {
+            "UEFI Ex 键盘"
+        } else if crate::usbhid::kbd_present() {
+            "USB HID 键盘"
+        } else if crate::ps2::keyboard_ok() {
+            "PS/2 键盘"
+        } else {
+            "固件键盘"
+        };
+        let ms = if absolute_pointer() {
+            "UEFI 绝对指针"
+        } else if crate::hw::pointer_present() {
+            "UEFI SimplePointer"
+        } else if crate::usbhid::mouse_absolute() {
+            "USB HID 绝对鼠标"
+        } else if crate::usbhid::mouse_present() {
+            "USB HID 鼠标"
+        } else if crate::ps2::mouse_ok() {
+            "PS/2 鼠标"
+        } else {
+            "无指针设备"
+        };
+        put(d, &mut l, kb);
+        put(d, &mut l, " + ");
+        put(d, &mut l, ms);
+        core::str::from_utf8_unchecked(&d[..l])
     }
 }

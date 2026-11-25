@@ -124,7 +124,7 @@ impl Gfx {
                     chosen = m as i32;
                     break;
                 }
-                if (pf == 0 || pf == 1) && w >= 800 && h >= 600 {
+                if (pf == 0 || pf == 1) && w >= 800 && h >= 600 && w <= 1920 && h <= 1080 {
                     if chosen < 0 || (w * h) < want_w * want_h {
                         want_w = w;
                         want_h = h;

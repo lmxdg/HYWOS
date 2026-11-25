@@ -163,8 +163,20 @@ impl InputState {
         self.right_clicked = false;
         self.moved = false;
         self.scroll = 0;
+        crate::usbhid::poll(w, h);
         crate::ps2::poll();
         if let Some((ax, ay, btn, moved)) = crate::input::abs_mouse(w, h) {
+            if moved {
+                self.x = ax;
+                self.y = ay;
+                self.moved = true;
+            }
+            self.left = btn & 1 != 0;
+            self.right = btn & 2 != 0;
+            self.finish_buttons();
+            return;
+        }
+        if let Some((ax, ay, btn, moved)) = crate::usbhid::abs_state() {
             if moved {
                 self.x = ax;
                 self.y = ay;
@@ -204,6 +216,21 @@ impl InputState {
                     serial_u32(self.left as u32);
                 }
             }
+            self.finish_buttons();
+            return;
+        }
+        if let Some((dx, dy, btn, moved)) = crate::usbhid::rel_state() {
+            if moved {
+                self.x += dx;
+                self.y += dy;
+                if self.x < 0 { self.x = 0; }
+                if self.y < 0 { self.y = 0; }
+                if self.x >= w - 1 { self.x = w - 1; }
+                if self.y >= h - 1 { self.y = h - 1; }
+                self.moved = true;
+            }
+            self.left = btn & 1 != 0;
+            self.right = btn & 2 != 0;
             self.finish_buttons();
             return;
         }

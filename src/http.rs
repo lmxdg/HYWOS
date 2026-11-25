@@ -172,7 +172,7 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redi
         return Err(ERR_REQUEST);
     }
     let mut name1 = *b"User-Agent\0";
-    let mut val1 = *b"HYWOS-Update/1.0.7\0";
+    let mut val1 = *b"HYWOS-Update/1.0.8\0";
     let mut name2 = *b"Accept\0";
     let mut val2 = *b"application/vnd.github+json\0";
     let mut headers = [

@@ -7,6 +7,7 @@ pub type Handle = *mut c_void;
 
 pub const EFI_SUCCESS: Status = 0;
 pub const EFI_ERR: Status = 0x8000_0000_0000_0000;
+pub const EFI_NOT_READY: Status = 0x8000_0000_0000_0006;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -35,6 +36,7 @@ pub const GUID_DEVICE_PATH: Guid = Guid::new(0x09576e91, 0x6d3f, 0x11d2, [0x8e, 
 pub const GUID_FILE_INFO: Guid = Guid::new(0x09576e92, 0x6d3f, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
 pub const GUID_HTTP_SERVICE_BINDING: Guid = Guid::new(0xbdc8e6af, 0xd9bc, 0x4379, [0xa7, 0x2a, 0xe0, 0xc4, 0xe7, 0x5d, 0xae, 0x1c]);
 pub const GUID_HTTP_PROTOCOL: Guid = Guid::new(0x7a59b29b, 0x910b, 0x4171, [0x82, 0x42, 0xa8, 0x5a, 0x0d, 0xf2, 0x5b, 0x5b]);
+pub const GUID_USB_IO: Guid = Guid::new(0x2b2f68d6, 0x0cd2, 0x44cf, [0x8e, 0x8b, 0xbb, 0xa2, 0x0b, 0x1b, 0x5b, 0x75]);
 pub const GUID_IP4_CONFIG2: Guid = Guid::new(0x5b446ed1, 0xe30b, 0x4faa, [0x87, 0x1a, 0x36, 0x54, 0xec, 0xa3, 0x60, 0x80]);
 
 #[repr(C)]
@@ -322,30 +324,45 @@ pub fn con_print(s: &str) {
 }
 
 pub fn read_key() -> Option<(u16, u16)> {
-    unsafe {
-        crate::ps2::poll();
-        if let Some(k) = crate::ps2::take_key() {
-            return Some(k);
-        }
-    }
+    unsafe { crate::ps2::poll(); }
+    let mut conin_err = false;
     unsafe {
         let st = &*ST;
         if !st.con_in.is_null() {
+            if (*st.con_in).wait_for_event != 0 {
+                let _ = bs_check_event((*st.con_in).wait_for_event as *mut core::ffi::c_void);
+            }
             let f: extern "efiapi" fn(*mut SimpleTextInput, *mut InputKey) -> Status =
                 core::mem::transmute((*st.con_in).read_key_stroke);
             let mut k = InputKey { scan_code: 0, unicode_char: 0 };
-            if f(st.con_in, &mut k) == EFI_SUCCESS {
+            let s = f(st.con_in, &mut k);
+            if s == EFI_SUCCESS {
                 serial_print("[key] conin");
                 serial_u32(k.scan_code as u32);
                 serial_u32(k.unicode_char as u32);
                 return Some((k.scan_code, k.unicode_char));
             }
+            if s != EFI_NOT_READY {
+                conin_err = true;
+            }
+        }
+    }
+    unsafe {
+        if let Some(k) = crate::ps2::take_key() {
+            return Some(k);
+        }
+        if let Some(k) = crate::usbhid::take_key() {
+            return Some(k);
         }
         if let Some(k) = crate::input::read_key_ex() {
             serial_print("[key] ex");
             serial_u32(k.0 as u32);
             serial_u32(k.1 as u32);
             return Some(k);
+        }
+        if conin_err {
+            crate::ps2::keyboard_takeover();
+            serial_print("[key] ps2 takeover");
         }
     }
     None

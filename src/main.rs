@@ -13,6 +13,7 @@ mod logo;
 mod port;
 mod ps2;
 mod updater;
+mod usbhid;
 mod version;
 mod video;
 mod efi;
@@ -36,7 +37,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.0.7 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.0.8 (x86_64 UEFI, Rust no_std)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         debug_print("Firmware detected");
@@ -99,6 +100,28 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         debug_print("[stage] net done");
         input::init();
         hw::pointer_init();
+        let fw_kbd = !(*ST).con_in.is_null();
+        if !input::absolute_pointer() && !hw::pointer_present() {
+            if ps2::init_mouse() {
+                debug_print("[input] PS/2 mouse ready");
+            } else {
+                debug_print("[input] PS/2 mouse unavailable");
+            }
+        }
+        let kbd_ok = ps2::init_keyboard();
+        ps2::keyboard_from_firmware(fw_kbd);
+        if !fw_kbd {
+            ps2::keyboard_takeover();
+        }
+        if kbd_ok {
+            debug_print("[input] PS/2 keyboard standby");
+        }
+        let need_mouse = !input::absolute_pointer() && !hw::pointer_present() && !ps2::mouse_ok();
+        if need_mouse || !fw_kbd {
+            if usbhid::init(!fw_kbd, need_mouse) {
+                debug_print("[input] USB HID ready");
+            }
+        }
         serial_print("[input] firmware input kept in control");
         audio::init();
         debug_print("[stage] pointer done");

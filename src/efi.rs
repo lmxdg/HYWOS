@@ -122,7 +122,7 @@ pub fn bs() -> *mut c_void {
 }
 
 #[inline(always)]
-unsafe fn bs_slot(idx: usize) -> *mut c_void {
+pub unsafe fn bs_slot(idx: usize) -> *mut c_void {
     let base = BS as *mut u8;
     let p = base.add(24 + idx * 8) as *mut *mut c_void;
     *p

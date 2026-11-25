@@ -356,6 +356,10 @@ unsafe fn mkdirs(vol: usize, path: &str) {
                 let name = core::str::from_utf8_unchecked(&cur[..clen]);
                 let f = open_on(VOLS[vol], name, MODE_READ | MODE_WRITE | MODE_CREATE, ATTR_DIR);
                 if !f.is_null() { close(f); }
+                if clen < 158 {
+                    cur[clen] = b'\\';
+                    clen += 1;
+                }
             }
         } else if clen < 158 {
             cur[clen] = c;

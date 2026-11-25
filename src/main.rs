@@ -37,9 +37,10 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.0.8 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.1.0 (x86_64 UEFI, Rust no_std)");
         let _ = version::VERSION;
         hw::firmware_vendor();
+        hw::cache_time();
         debug_print("Firmware detected");
         bs_stall(60_000);
 
@@ -88,8 +89,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         debug_print("[stage] boot anim done");
 
         g.clear(rgb(4, 5, 10));
-        g.text_center(g.w as i32 / 2, g.h as i32 / 2 - 22, "HYWOS", rgb(230, 242, 255), 3);
-        g.text_center(g.w as i32 / 2, g.h as i32 / 2 + 12, "Preparing the 64px icon cache (4x supersampling)", rgb(130, 188, 236), 1);
+        g.text_center(g.w as i32 / 2, g.h as i32 / 2 - 16, "HYWOS", rgb(230, 242, 255), 3);
         debug_print("[stage] icon preload begin");
         icon::preload();
         debug_print("[stage] icon preload done");

@@ -5,7 +5,7 @@ use crate::gfx::{rgb, text_width, Gfx};
 use crate::hw;
 use crate::icon::{icon, AppId};
 
-pub const DOCK_APPS: [AppId; 18] = [
+pub const DOCK_APPS: [AppId; 19] = [
     AppId::Terminal,
     AppId::Files,
     AppId::Settings,
@@ -24,6 +24,7 @@ pub const DOCK_APPS: [AppId; 18] = [
     AppId::Videos,
     AppId::Contacts,
     AppId::Messages,
+    AppId::Security,
 ];
 
 pub struct Win {
@@ -220,7 +221,7 @@ impl Ui {
     fn dock_geom(&self) -> (i32, i32, i32, i32, i32, i32) {
         let w = self.w();
         let (iw, gap) = if w >= 1040 { (46, 5) } else if w >= 900 { (42, 5) } else { (34, 5) };
-        let dw = 19 * iw + 18 * gap + 28;
+        let dw = 20 * iw + 19 * gap + 28;
         let dx = (w - dw) / 2;
         let dh = iw + 22;
         let dy = self.h() - dh - 10;
@@ -233,7 +234,7 @@ impl Ui {
         let rel = mx - (dx + 10);
         if rel < 0 { return -1; }
         let slot = rel / (iw + gap);
-        if slot < 0 || slot >= 19 { -1 } else { slot }
+        if slot < 0 || slot >= 20 { -1 } else { slot }
     }
 
     unsafe fn draw_dock(&self) {
@@ -244,10 +245,10 @@ impl Ui {
         g.round_rect(dx, dy, dw, 1, 0, rgb(255, 255, 255), 46);
         g.round_rect(dx + 1, dy + 1, dw - 2, dh / 2, 22, rgb(255, 255, 255), 10);
         let mut i = 0;
-        while i < 19 {
+        while i < 20 {
             let ix = dx + 14 + i * (iw + gap);
             let iy = dy + (dh - iw) / 2;
-            if i < 18 {
+            if i < 19 {
                 let ic = icon(DOCK_APPS[i as usize]);
                 if self.hover == i as i32 {
                     g.round_rect(ix - 4, iy - 4, iw + 8, iw + 8, 13, rgb(255, 255, 255), 44);
@@ -258,7 +259,7 @@ impl Ui {
             } else {
                 let cx = ix + iw / 2;
                 let cy = iy + iw / 2;
-                if self.hover == 18 {
+                if self.hover == 19 {
                     g.round_rect(ix - 4, iy - 4, iw + 8, iw + 8, 13, rgb(255, 255, 255), 44);
                 }
                 g.round_rect(ix, iy, iw, iw, 11, rgb(30, 36, 54), 245);
@@ -291,8 +292,8 @@ impl Ui {
         g.rect(0, 30, w, 1, rgb(255, 255, 255), 16);
         g.circle(18, 15, 7, rgb(110, 200, 255), 255);
         g.circle(18, 15, 3, rgb(230, 246, 255), 255);
-        g.text(32, 7, "HYWOS 1.0.8", rgb(232, 242, 255), 1);
-        g.text(32 + text_width("HYWOS 1.0.8", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
+        g.text(32, 7, "HYWOS 1.1.0", rgb(232, 242, 255), 1);
+        g.text(32 + text_width("HYWOS 1.1.0", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
         let c = hw::cpu();
         let mut b = [0u8; 64];
         let mut l = 0;
@@ -372,11 +373,11 @@ impl Ui {
         }
     }
 
-    fn filtered(&self) -> ([AppId; 19], usize) {
-        let mut out = [AppId::Terminal; 19];
+    fn filtered(&self) -> ([AppId; 20], usize) {
+        let mut out = [AppId::Terminal; 20];
         let mut n = 0;
         let mut i = 0;
-        while i < 19 {
+        while i < 20 {
             let a = AppId::from_index(i);
             if self.matches(a) { out[n] = a; n += 1; }
             i += 1;
@@ -609,9 +610,9 @@ impl Ui {
                 if self.input.y < 28 {
                 } else if self.input.y > h - 90 {
                     let slot = self.dock_slot_at(self.input.x, self.input.y);
-                    if slot >= 0 && slot < 18 {
+                    if slot >= 0 && slot < 19 {
                         self.open_app(DOCK_APPS[slot as usize]);
-                    } else if slot == 18 {
+                    } else if slot == 19 {
                         self.launchpad = true;
                         self.lp_t = 0;
                         self.search_len = 0;
@@ -731,4 +732,15 @@ impl Ui {
             self.draw_launchpad();
         }
     }
+}
+
+pub unsafe fn window_count() -> usize {
+    let wins = &*core::ptr::addr_of!(WINS);
+    let mut n = 0usize;
+    let mut i = 0;
+    while i < 3 {
+        if wins[i].open { n += 1; }
+        i += 1;
+    }
+    n
 }

@@ -479,6 +479,7 @@ pub fn firmware_str() -> &'static str {
 }
 
 pub unsafe fn get_time() -> Option<EfiTime> {
+    if let Some(t) = cmos_time() { return Some(t); }
     let st = &*ST;
     if st.runtime_services.is_null() { return None; }
     let rt = st.runtime_services as *mut RuntimeServices;
@@ -524,6 +525,7 @@ static mut BOOT_TIME: EfiTime = EfiTime {
 static mut HAVE_TIME: bool = false;
 
 pub unsafe fn cache_time() {
+    if HAVE_TIME { return; }
     if let Some(t) = get_time() {
         BOOT_TIME = t;
         HAVE_TIME = true;
@@ -562,4 +564,97 @@ pub fn num2(buf: &mut [u8], mut v: u32, min_digits: usize) -> usize {
         i += 1;
     }
     n
+}
+#[repr(C)]
+struct MemDesc {
+    kind: u32,
+    pad: u32,
+    phys: u64,
+    virt: u64,
+    pages: u64,
+    attr: u64,
+}
+
+pub unsafe fn mem_kb() -> (u64, u64) {
+    let f: extern "efiapi" fn(*mut usize, *mut core::ffi::c_void, *mut usize, *mut usize, *mut u32) -> Status =
+        core::mem::transmute(bs_slot(4));
+    let mut size = 0usize;
+    let mut key = 0usize;
+    let mut dsz = 0usize;
+    let mut dver = 0u32;
+    let _ = f(&mut size, core::ptr::null_mut(), &mut key, &mut dsz, &mut dver);
+    let mut buf = [0u8; 32768];
+    size = buf.len();
+    if !status_ok(f(&mut size, buf.as_mut_ptr() as *mut core::ffi::c_void, &mut key, &mut dsz, &mut dver)) || dsz == 0 {
+        return (0, 0);
+    }
+    let mut total = 0u64;
+    let mut free = 0u64;
+    let mut off = 0usize;
+    while off + dsz <= size {
+        let d = &*(buf.as_ptr().add(off) as *const MemDesc);
+        let sz = d.pages * 4096;
+        if (d.kind >= 1 && d.kind <= 7) || d.kind == 9 || d.kind == 10 {
+            total += sz;
+        }
+        if d.kind == 7 { free += sz; }
+        off += dsz;
+    }
+    (total / 1024, free / 1024)
+}
+
+pub fn uptime_secs() -> u32 {
+    unsafe {
+        let b = match cached_time() { Some(t) => t, None => return 0 };
+        let n = match get_time() { Some(t) => t, None => return 0 };
+        let bs = (b.hour as u32) * 3600 + (b.minute as u32) * 60 + b.second as u32;
+        let ns = (n.hour as u32) * 3600 + (n.minute as u32) * 60 + n.second as u32;
+        if ns >= bs { ns - bs } else { ns + 86400 - bs }
+    }
+}
+
+pub fn cores() -> usize {
+    unsafe { (*core::ptr::addr_of!(CPU)).enabled }
+}
+unsafe fn cmos_r(idx: u8) -> u8 {
+    crate::port::outb(0x70, idx);
+    crate::port::io_delay();
+    crate::port::inb(0x71)
+}
+
+unsafe fn cmos_time() -> Option<EfiTime> {
+    let mut guard = 0u32;
+    while guard < 200_000 {
+        if cmos_r(0x0A) & 0x80 == 0 { break; }
+        guard += 1;
+    }
+    let mut sec = cmos_r(0x00);
+    let mut min = cmos_r(0x02);
+    let mut hour = cmos_r(0x04);
+    let mut day = cmos_r(0x07);
+    let mut mon = cmos_r(0x08);
+    let mut year = cmos_r(0x09);
+    let cen = cmos_r(0x32);
+    let b = cmos_r(0x0B);
+    if b & 0x04 == 0 {
+        sec = (sec >> 4) * 10 + (sec & 0x0f);
+        min = (min >> 4) * 10 + (min & 0x0f);
+        let pm = hour & 0x80;
+        hour = (hour & 0x7f);
+        hour = (hour >> 4) * 10 + (hour & 0x0f);
+        if b & 0x02 == 0 && pm != 0 { hour = (hour + 12) % 24; }
+        year = (year >> 4) * 10 + (year & 0x0f);
+        day = (day >> 4) * 10 + (day & 0x0f);
+        mon = (mon >> 4) * 10 + (mon & 0x0f);
+    }
+    let mut y = year as u16;
+    let c = if b & 0x04 == 0 { (cen >> 4) * 10 + (cen & 0x0f) } else { cen };
+    if c >= 19 { y = c as u16 * 100 + year as u16; } else { y = 2000 + year as u16; }
+    if mon < 1 || mon > 12 || day < 1 || day > 31 || hour > 23 || min > 59 || sec > 59 || y < 2000 {
+        return None;
+    }
+    Some(EfiTime {
+        year: y, month: mon, day, hour, minute: min, second: sec,
+        pad1: 0, nanosecond: 0, timezone: 0, daylight: 0, pad2: 0,
+    })
 }

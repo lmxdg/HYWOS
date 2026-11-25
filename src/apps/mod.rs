@@ -4,6 +4,8 @@ use crate::gfx::*;
 use crate::hw;
 use crate::icon::{icon, AppId};
 
+pub mod suite;
+
 pub const HEADER_H: i32 = 40;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.0.8 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.0 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -202,7 +204,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.0.8 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.0 x86_64 UEFI (Rust no_std kernel)"),
             "ps" => {
                 self.print("  PID  CORE  STATE  NAME");
                 self.print("    1     0  run    init");
@@ -399,10 +401,12 @@ pub struct AppState {
     pub files_sel: usize,
     pub files_click: usize,
     pub tick: u32,
+    pub suite: suite::Suite,
 }
 
 pub unsafe fn init_state(st: &mut AppState, id: AppId) {
     st.tick = 0;
+    st.suite.init(id);
     st.files_sel = 0;
     st.files_click = 0;
     st.files_cwd = Str80::empty();
@@ -447,6 +451,20 @@ pub fn app_size(id: AppId) -> (i32, i32) {
         AppId::Weather => (520, 430),
         AppId::Store => (680, 470),
         AppId::About => (620, 420),
+        AppId::Security => (720, 520),
+        AppId::Calculator => (420, 460),
+        AppId::Calendar => (620, 500),
+        AppId::Clock => (720, 440),
+        AppId::Browser => (720, 520),
+        AppId::Notes => (760, 500),
+        AppId::Photos => (760, 520),
+        AppId::Videos => (760, 520),
+        AppId::Music => (640, 440),
+        AppId::Maps => (760, 520),
+        AppId::Camera => (680, 500),
+        AppId::Contacts => (680, 480),
+        AppId::Messages => (680, 480),
+        AppId::Mail => (680, 480),
         _ => (640, 420),
     }
 }
@@ -549,6 +567,11 @@ pub unsafe fn draw(st: &mut AppState, id: AppId, g: &Gfx, x: i32, y: i32, w: i32
         AppId::Weather => draw_weather(&mut st.weather, g, x, y, w, h),
         AppId::Store => draw_store(&mut st.store, g, x, y, w, h),
         AppId::About => draw_about(g, x, y, w, h),
+        AppId::Security | AppId::Calculator | AppId::Calendar | AppId::Clock | AppId::Browser
+        | AppId::Notes | AppId::Photos | AppId::Videos | AppId::Music | AppId::Maps
+        | AppId::Camera | AppId::Contacts | AppId::Messages | AppId::Mail => {
+            suite::draw(&mut st.suite, id, g, x, y, w, h)
+        }
         _ => draw_generic(g, id, x, y, w, h),
     }
 }
@@ -698,7 +721,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.0.8 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.0 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -858,11 +881,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.0.8", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "星河版 · 版本 1.1.0", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.0.8（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.0（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     g.text(vx, ry, "x86_64 · ACPI / CPUID 拓扑", rgb(68, 78, 98), 1);
@@ -1049,6 +1072,13 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             }
             return AppAction::None;
         }
+        AppId::Security | AppId::Calculator | AppId::Calendar | AppId::Clock | AppId::Browser
+        | AppId::Notes | AppId::Photos | AppId::Videos | AppId::Music | AppId::Maps
+        | AppId::Camera | AppId::Contacts | AppId::Messages | AppId::Mail => {
+            if suite::click(&mut st.suite, id, lx, ly, x, y, w, h) {
+                return AppAction::None;
+            }
+        }
         _ => {}
     }
     AppAction::None
@@ -1066,6 +1096,9 @@ impl Store {
 pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction {
     if id == AppId::Terminal {
         return st.term.key(scan, ch);
+    }
+    if suite::key(&mut st.suite, id, scan, ch) {
+        return AppAction::None;
     }
     if id == AppId::Settings {
         if scan == 0x04 && st.settings.page > 0 {
@@ -1111,7 +1144,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.0.8");
+            set_update_msg(s, true, "已是最新版本 1.1.0");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

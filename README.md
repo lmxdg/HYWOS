@@ -1,222 +1,205 @@
-# HYWOS 1.0.8 «星河 · 显示与输入增强版»
+# HYWOS
 
 <p align="center">
   <img src="assets/logo-256.png" width="140" alt="HYWOS logo">
 </p>
 
-HYWOS 是一个用 Rust 编写的 64 位 UEFI 操作系统，不依赖任何第三方 crate，
-以 `no_std` 方式直接运行在 UEFI 固件之上。1.0.2 增加了显卡、PS/2 键鼠与声卡的
-寄存器级驱动，并保留 1.0.1 的完整中文界面。
+<p align="center">
+  <b>当前版本 1.1.0 «星河»</b> · MIT · x86_64 UEFI
+</p>
 
-![粒子 O 启动动画](docs/screenshots/boot-large.png)
+HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
+以 `no_std` 方式直接运行在固件之上，自带显卡、输入、音频驱动、桌面环境、
+应用套件与安全中心，可制作启动 U 盘或 ISO 安装到本地磁盘。
+
+![桌面](docs/screenshots/desktop.png)
 
 ## 目录
 
-- [1.0.8 新变化](#108-新变化)
-- [1.0.7 新变化](#107-新变化)
-- [1.0.2 新变化](#102-新变化)
-- [硬件驱动](#硬件驱动)
-- [特性总览](#特性总览)
-- [界面截图](#界面截图)
-- [快捷键](#快捷键)
-- [中文支持](#中文支持)
-- [终端](#终端)
-- [文件系统与应用存储](#文件系统与应用存储)
-- [权限模型](#权限模型)
-- [截屏](#截屏)
-- [软件更新 .updpkg](#软件更新-updpkg)
+- [设计目标](#设计目标)
+- [应用套件](#应用套件)
+- [安全中心](#安全中心)
+- [显示](#显示)
+- [输入](#输入)
+- [音频](#音频)
+- [硬件与驱动](#硬件与驱动)
+- [系统架构](#系统架构)
+- [文件系统与数据](#文件系统与数据)
 - [构建](#构建)
-- [在 QEMU 中运行](#在-qemu-中运行)
-- [源码结构](#源码结构)
-- [设计说明](#设计说明)
+- [在-QEMU-中运行](#在-qemu-中运行)
+- [应用开发](#应用开发)
+- [快捷键](#快捷键)
+- [界面截图](#界面截图)
+- [版本历史](#版本历史)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
 
-## 1.0.8 新变化
+## 设计目标
 
-- **修复高分辨率下桌面空白**：UI 合成缓冲原先固定为 1024×768，VMware 常见的
-  1280×800 / 1920×1080 会退化为直接绘制，并在刷新时错位自拷贝；现缓冲提升到
-  1920×1080，同缓冲刷新直接 flush，非 1024 分辨率桌面完整显示。
-- **修复启动动画的 O**：粒子 O 对齐到 `HYWOS` 中第 4 个字母的位置，不再落在 S 右侧。
-- **VMware SVGA II 加固**：读取 `SVGA_REG_MAX_WIDTH/HEIGHT` 选择安全模式，
-  校验 32bpp 后启用，并修正 `SYNC/BUSY` 寄存器（0x15/0x16）。
-- **重写 PS/2 驱动**：补上键盘使能与 `KBD_OK` 状态；扫描码/字符队列改为 32 位
-  （原实现截断为 16 位，功能键丢失）；规范鼠标复位/采样率/使能顺序；
-  大位移改为钳制而非丢弃；支持左右键、Shift/Caps、方向键与 F1–F12。
-- **PS/2 在桌面可用**：固件无指针协议时自动启用 PS/2 鼠标；固件键盘连续 3 次
-  未消费 8042 数据或 `ConIn` 返回错误时自动接管 PS/2 键盘。
-- **新增 USB HID 驱动**：基于 `EFI_USB_IO_PROTOCOL`，解析接口/端点与 HID 报告
-  描述符，支持启动协议键盘（8 字节）、相对鼠标（3/4 字节）与绝对鼠标
-  （16 位轴、0x7FFF 范围）；仅在固件未提供对应驱动时接管，避免争抢。
-- **现代键鼠优先级**：`ConIn`（先 CheckEvent）→ `SimpleTextInputEx` →
-  `AbsolutePointer` → `SimplePointer` → PS/2 → USB HID；关于本机显示实际输入路径。
-- 版本号升级到 1.0.8。
+- **零依赖**：不引入任何 crate，直接手写 UEFI 协议绑定、图形合成、文件系统与驱动。
+- **真实可用**：桌面上的每个应用都有实际功能与持久化数据，不使用占位页面。
+- **本地优先**：数据写入用户卷；网络能力由固件 HTTP 提供，离线时功能完整。
+- **可安装、可更新**：ISO 安装到本地磁盘，`.updpkg` 更新内核并保留用户数据。
 
-## 1.0.7 新变化
+## 应用套件
 
-- **修复安装后仍进入安装程序**：安装介质判定改为只看当前启动卷，
-  并在硬盘写入 `\HYWOS\INSTALL.TXT`。从硬盘启动时不会再被 ISO 残留设备误判。
-- **安装流程重写**：ISO 启动先询问是否安装；确认后先把内核、系统资源、
-  版本文件与安装标记**全部复制到本地磁盘**，最后才创建 FAT16 引导分区与 MBR 引导记录。
-- **设置中新增在线更新**：通过 UEFI HTTP 协议读取 GitHub Releases 列表，与本地版本
-  1.0.7 比较；发现新版本可下载 `.updpkg` 并应用，支持离线 `\updates\latest.json`
-  回退与本地同版本包扫描。无指针设备时可用键盘 `←` / `→` 切页、`C` 检查、`D` 更新。
-- **修复卷写入**：文件打开模式改为 `READ|WRITE`（FatPkg 只接受此组合），
-  安装盘与用户卷现在可正常创建、替换文件，更新包能真实写入内核。
-- 版本号升级到 1.0.7。
-
-## 1.0.6 新变化
-
-- **安装程序进度条**：命令行安装界面新增进度条与百分比，按阶段显示
-  「写入 MBR 与 FAT16 引导分区」→「复制 BOOTX64.EFI 到 ESP」→「完成」，
-  每阶段刷新并短暂停顿，便于观察安装过程。
-- 版本号升级到 1.0.6。
-
-## 1.0.5 新变化
-
-- **修复安装器读取不到硬盘**：
-  - 检测前对每个 Block I/O 设备执行 `Reset`，解决 `present=0` 导致漏检；
-  - 容量门槛从 50MB 降到 **20MB**（`last_block >= 40000`），小容量硬盘也能安装；
-  - 优先选择整盘（`LogicalPartition=0`）而不是分区；
-  - 未找到磁盘时列出**检测到的块设备**（容量、块大小、只读、分区标志），便于排查；
-  - 支持 IDE / SATA / virtio-blk / NVMe，兼容 **512 字节与 4096 字节（4Kn）** 逻辑块设备；
-  - 安装前重复执行 `ConnectController` 并等待，设备延迟就绪也能被识别；
-  - 诊断行额外显示「就绪」状态（MediaPresent）。
-- **安装确认改为回车**：在确认界面直接按 **Enter** 开始安装，按 `N` 或 `Esc` 取消。
-- 版本号升级到 1.0.5。
-
-## 1.0.4 新变化
-
-- **ISO 改为纯安装介质**：从 ISO 启动后进入**命令行安装程序**，先询问是否安装；
-  确认后自动写入 MBR 分区表、创建 FAT16 引导分区（ESP）、
-  把 `BOOTX64.EFI` 复制到 `\EFI\BOOT\`，重启即可从硬盘引导。
-- **安装后从硬盘启动**：硬盘 ESP 不含安装介质标记，启动时直接进入
-  星河动画与桌面，不再进入安装器。
-- **修复启动画面文字过小**：HYWOS 标题放大到 32×64 像素/字符，
-  粒子 O 与中文副标题同步放大（2×）。
-- 版本号升级到 1.0.4。
-
-## 安装 HYWOS
-
-1. 为虚拟机/机器准备一块 **≥100MB 的可写磁盘**（安装器会写入 128MB 分区）。
-2. 使用 `hywos.iso` 启动，进入命令行安装程序，界面会显示目标磁盘容量。
-3. 直接按 **Enter** 确认（按 `N` 取消）。安装器按以下顺序执行：
-   - 先复制全部系统文件到本地磁盘：`BOOTX64.EFI`、`\HYWOS\SYSTEM\WELCOME.TXT`、
-     `\HYWOS\VERSION` 与安装标记 `\HYWOS\INSTALL.TXT`；
-   - 目录与 FAT 表写入完成后，再创建 FAT16 引导分区（128MB，簇 4KB）
-     并写入 MBR 引导记录（type 0x0E，起始 LBA 2048）；
-4. 看到「安装完成」后关闭虚拟机，**移除 ISO**，从硬盘启动。
-   硬盘上的安装标记会阻止再次进入安装程序。
-
-如果提示「未找到可安装的硬盘」，界面会列出固件检测到的所有块设备，
-请确认磁盘 ≥20MB、可写、块大小 512 字节。
-
-安装器只会操作所选的可写磁盘；从 ISO 启动时不会进入桌面。
-
-## 1.0.3 新变化
-
-- **全新启动动画**：168 个粒子从四周螺旋汇聚成发光的 **O**，随后 O 收缩
-  移动到标题位置，H、Y、W、S 依次淡入，最终构成 HYWOS 中的 O，
-  并浮现「星河 · 中文界面 · 64 位」。
-- **输入修复**：
-  - 鼠标优先级改为 绝对指针（Absolute Pointer）→ SimplePointer → PS/2；
-  - SimplePointer 单帧位移限幅 ±45，并丢弃 >150 的同步跳变；
-  - PS/2 鼠标严格校验 ACK 与设备 ID，三字节包校验溢出位并过滤异常跳变；
-  - PS/2 初始化重新独占键盘扫描，避免与固件驱动争抢数据。
-- **现代键鼠**：新增 `src/input.rs`，接入 UEFI `SimpleTextInputEx` 与
-  `AbsolutePointer`，并作为 PS/2 的回退/补充。
-- **virtio-gpu**：新增 **modern virtio-pci** 支持（解析 PCI capability、
-  协商 VIRTIO_F_VERSION_1、common cfg 配置队列、notify 区 MMIO 通知），
-  与 legacy 共用同一套 2D 命令。
-- 版本号升级到 1.0.3；测试环境切换到 **QEMU 11.1.3**（源码构建）。
-
-## 1.0.2 新变化
-
-- **显卡驱动**：新增 VBE/标准 VGA（Bochs VBE）、virtio-gpu（legacy 2D）、
-  VMware SVGA II 三条驱动路径，探测顺序为 virtio-gpu → SVGA → VBE → UEFI GOP。
-  驱动成功后分辨率提升到 1024×768 32bpp。
-- **PS/2 键鼠**：直接初始化 8042 控制器，轮询键盘 Set-1 扫描码与鼠标三字节包，
-  支持字母数字、Shift、方向键、F1–F12、Enter/Backspace/Esc。
-- **声卡**：Intel AC'97（8086:2415）寄存器级驱动，48kHz 16-bit 立体声 DMA，
-  启动时播放和弦提示音；无 AC'97 时回退 PC Speaker。
-- **关于本机**展示实际显卡、输入与音频驱动名称。
-- 版本号统一升级到 1.0.2。
-
-## 硬件驱动
-
-| 设备 | 驱动实现 | 验证状态 |
+| 应用 | 能力 | 数据位置 |
 |---|---|---|
-| 标准 VGA / Bochs VBE | PCI 1234:1111，VBE I/O 0x1CE/0x1CF，设置 1024×768×32 并使用 LFB | **QEMU `-vga std` 实测通过**（截图 1024×768） |
-| virtio-gpu | legacy + modern virtio-pci，control virtqueue，2D 命令 | modern 协议已实现；QEMU 11 的 64 位 BAR 位于 0xC000000000，队列通知未生效，命令超时 |
-| VMware SVGA II | PCI 15AD:0405，SVGA II 寄存器与 LFB，SYNC 刷新 | 代码完整；当前 QEMU 固件只暴露 index 寄存器，SetMode 失败时自动回退 GOP |
-| UEFI GOP | 固件帧缓冲 | 实测通过（回退路径） |
-| PS/2 键盘 | 8042，禁用/启用扫描，Set-1 扫描码表 | **实测通过**（QEMU sendkey F2 打开天气） |
-| PS/2 鼠标 | 8042 AUX 通道，三字节包解析 | 已接入，与 UEFI SimplePointer 互补 |
-| AC'97 声卡 | PCI 8086:2415，NAM/NABM，Buffer Descriptor List + DMA | **实测通过**（`-audiodev wav` 生成波形，峰值 14116/32767） |
-| PC Speaker | PIT 通道 2 | 回退路径 |
+| 终端 | 27 条命令：文件、系统、网络、截屏、更新 | 当前目录 |
+| 文件 | 浏览用户卷，双击打开文本/更新包 | 用户卷 |
+| 设置 | 显示、权限、软件更新、关于本机 | `\home\user\.apps` |
+| 应用商店 | 安装状态持久化 | `\home\user\.apps` |
+| 关于本机 | 显卡/输入/音频/CPU/内存真实信息 | 只读 |
+| 浏览器 | 本地页面、UEFI HTTP 打开网址 | `\HYWOS\SYSTEM` |
+| 邮件 | 本地收件箱/发件箱，撰写保存 | `\home\user\Mail` |
+| 照片 | 解码浏览 24 位 BMP | `\home\user\Pictures` |
+| 音乐 | 播放 PCM WAV，内置音阶 | `\home\user\Music` |
+| 日历 | RTC 月历、切月、当天高亮 | RTC |
+| 计算器 | 四则、括号、小数、键盘与按钮 | 内存 |
+| 备忘录 | 新建/编辑/保存，Ctrl+S | `\home\user\Notes` |
+| 地图 | 经纬网、大陆轮廓、城市、平移缩放 | 内置 |
+| 时钟 | 模拟钟面、数字时间、秒表 | RTC |
+| 相机 | 实时取景，保存全屏 BMP | `\home\user\Screenshots` |
+| 视频 | BMP 序列循环播放 | `\home\user\Videos` |
+| 通讯录 | 联系人浏览与新增 | `\home\user\Contacts` |
+| 信息 | 本地消息记录与发送 | `\home\user\Messages` |
+| 安全中心 | 实时监控、快速/全盘查杀、病毒库 | `\HYWOS\SECURITY` |
+| 天气 | 5 城市离线 5 日预报（启动台） | 内置 |
 
-驱动信息会显示在 `关于本机` 页面。若显卡驱动初始化失败，系统自动回退
-UEFI GOP；若 PS/2 不可用，回退固件输入；若 AC'97 不存在，使用 PC Speaker。
+Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
+应用首次打开时会自动创建缺失目录与示例记录。
 
-## 特性总览
+## 安全中心
 
-| 能力 | 实现 |
-|---|---|
-| 启动 | UEFI x86_64，PE32+ `BOOTX64.EFI`，El Torito ISO |
-| 语言 | Rust 1.100，`no_std`，零外部依赖，手写 EFI/PCI/驱动 |
-| 中文 | 6786 字 GB2312 点阵，UTF-8 混排渲染，中文界面 |
-| 显卡 | VBE、virtio-gpu、VMware SVGA II、UEFI GOP 回退 |
-| 输入 | PS/2 8042、UEFI Ex/绝对指针/SimplePointer、USB HID（EFI_USB_IO） |
-| 音频 | Intel AC'97 DMA 播放 + PC Speaker 回退 |
-| 图形 | 双缓冲合成器，圆角/渐变/抗锯齿/阴影 |
-| 开机动画 | 星河主题：星点汇聚、双层光环、徽标淡入、中文副标 |
-| 图标 | 256×256 画布 4× 超采样后降采样到 64px 缓存 |
-| 桌面 | 中文状态栏、19 槽浮动 Dock、窗口栈、鼠标光标 |
-| Launchpad | 6 列网格，渐暗与错峰缩放，搜索框，中文名称 |
-| 应用 | 终端、文件、设置、天气、应用商店、关于本机 |
-| 多核 | ACPI MADT + CPUID 拓扑，QEMU 中实测 `4 核` |
-| 存储 | UEFI SimpleFileSystem；无可写卷时内存文件系统回退 |
-| 更新 | GitHub Releases 在线检查 + CONLYUPD 包，CRC32 校验，内核文件替换 |
-| 截屏 | F12 / Print Screen，24 位 BMP，编号递增 |
+- **实时监控**：逻辑核心数、内存总量/可用量、运行时间、实时防护状态。
+  内存可用率每 24 帧采样并绘制趋势线，数据来自 `GetMemoryMap` 真实结果。
+- **快速查杀**：检查内核、版本文件、安装标记、系统资源与权限文件。
+- **全盘查杀**：递归系统卷与用户卷（深度 4、最多 400 个文件），
+  逐个计算 FNV-1a 签名并与病毒库比对，显示进度、当前文件与日志。
+- **病毒库**：`\HYWOS\SECURITY\VIRUS.DB`，每行 `8位十六进制签名|名称`。
+  可从用户卷或系统卷加载；未提供病毒库时签名数量为 0，扫描结果为
+  “未发现匹配威胁”。
 
-## 界面截图
+## 显示
 
-| 启动动画（粒子 O，已放大） | 安装程序（命令行） |
+- 显卡探测顺序：virtio-gpu（legacy 2D）→ VMware SVGA II → VBE → UEFI GOP。
+- SVGA 读取 `MAX_WIDTH/MAX_HEIGHT` 选择安全模式，并校验 32bpp。
+- 软件合成器支持到 **1920×1080**；1024×768 与 1280×800 均完整显示状态栏与 Dock。
+- 启动动画：LOGO 淡入 + `HYWOS` 文字，无副标题，约 2.4 秒。
+
+## 输入
+
+| 优先级 | 键盘 | 指针 |
 |---|---|---|
-| ![启动动画](docs/screenshots/boot-large.png) | ![安装程序](docs/screenshots/installer.png) |
+| 1 | UEFI `ConIn`（先 CheckEvent） | `AbsolutePointer` |
+| 2 | UEFI `SimpleTextInputEx` | `SimplePointer` |
+| 3 | PS/2 8042（自动接管） | PS/2 8042 鼠标 |
+| 4 | USB HID（EFI_USB_IO） | USB HID 绝对/相对鼠标 |
 
-| 安装进度 | 安装完成 |
+- PS/2 驱动支持 Shift/Caps、方向键、F1–F12、左右键；鼠标位移钳制不丢包。
+- USB HID 解析接口、端点与报告描述符，支持启动协议键盘、相对与绝对鼠标；
+  仅在固件未提供对应驱动时接管。
+
+## 音频
+
+- Intel AC'97（8086:2415）DMA 播放，48 kHz 16 位立体声。
+- 启动提示音、音乐应用 WAV 播放与音阶演示。
+
+## 硬件与驱动
+
+| 类别 | 驱动 |
 |---|---|
-| ![安装进度](docs/screenshots/progress.png) | ![安装完成](docs/screenshots/install-done.png) |
+| 显卡 | virtio-gpu 2D、VMware SVGA II、Bochs VBE、UEFI GOP 回退 |
+| 输入 | PS/2 8042、UEFI Ex/绝对指针/SimplePointer、USB HID |
+| 音频 | Intel AC'97；无设备时 PC Speaker |
+| 存储 | UEFI Block I/O + SimpleFileSystem，4Kn 支持 |
+| 网络 | SNP（MAC/链路），HTTP 由固件 `EFI_HTTP_PROTOCOL` 提供 |
+| 固件 | ACPI MADT、CPUID、RTC、SMBIOS 字符串 |
 
-| 桌面（从硬盘启动） |
-|---|
-| ![桌面](docs/screenshots/desktop.png) |
+## 系统架构
 
-| Launchpad | 天气 |
+启动流程：
+
+1. 固件加载 `\EFI\BOOT\BOOTX64.EFI`。
+2. 探测显卡并建立合成器；挂载卷，判定启动卷与安装介质。
+3. 若从 ISO 启动：询问安装 → 复制系统文件 → 创建 FAT16 引导分区。
+4. 否则：LOGO 淡入动画 → 预生成图标 → 探测 ACPI/网络/输入/音频 → 桌面。
+
+核心模块：
+
+| 文件 | 职责 |
 |---|---|
-| ![Launchpad](docs/screenshots/launchpad.png) | ![天气](docs/screenshots/weather.png) |
+| `src/main.rs` | EFI 入口、启动流程、内存函数 |
+| `src/efi.rs` | UEFI 协议绑定、ConIn、CRC32、内存映射 |
+| `src/video.rs` | virtio-gpu / SVGA / VBE / GOP |
+| `src/gfx.rs` | 32bpp 合成、UTF-8 混排、圆角/渐变/位图 |
+| `src/cjk.rs` | GB2312 点阵字库（6786 字） |
+| `src/fs.rs` / `src/diskfmt.rs` | 文件系统、FAT16 安装、BMP 截屏、更新包 |
+| `src/ui.rs` | 窗口栈、Dock、启动台、合成与截屏 |
+| `src/apps/mod.rs` | 终端、文件、设置、商店、天气、关于 |
+| `src/apps/suite.rs` | 应用套件与安全中心 |
+| `src/ps2.rs` / `src/usbhid.rs` / `src/input.rs` | 输入驱动 |
+| `src/audio.rs` | AC'97 |
+| `src/anim.rs` | LOGO 淡入动画 |
+| `src/http.rs` / `src/updater.rs` | 固件 HTTP、在线更新 |
 
-| 设置 · 权限 | 设置 · 软件更新 |
-|---|---|
-| ![设置](docs/screenshots/settings.png) | ![软件更新](docs/screenshots/update.png) |
+## 文件系统与数据
 
-| 应用商店 |
-|---|
-| ![商店](docs/screenshots/store.png) |
+```
+用户卷\
+├── home\user\
+│   ├── .apps\<appid>.kv 与 _permissions
+│   ├── Documents\  Pictures\  Screenshots\
+│   ├── Notes\  Music\  Videos\
+│   ├── Contacts\  Messages\  Mail\
+│   └── updates\
+└── updates\latest.json
+系统卷\
+├── EFI\BOOT\BOOTX64.EFI
+└── HYWOS\
+    ├── VERSION  INSTALL.TXT
+    ├── SYSTEM\WELCOME.TXT
+    └── SECURITY\VIRUS.DB（可选）
+```
 
-| 关于本机（驱动信息） | 终端 |
-|---|---|
-| ![关于](docs/screenshots/about.png) | ![终端](docs/screenshots/terminal.png) |
+- 权限：设置中按应用控制存储、通知、网络；关闭存储后应用读写接口真实拒绝。
+- 更新：`.updpkg`（CONLYUPD + CRC32）替换 `\EFI\BOOT\BOOTX64.EFI` 并写入版本，
+  用户数据保留；设置内可在线检查 GitHub Releases 或使用本地更新包。
 
-| 文件 |
-|---|
-| ![文件](docs/screenshots/files.png) |
+## 构建
 
-截图由 QEMU 运行 `hywos.iso` 安装后、从硬盘启动，通过 VNC 抓取 framebuffer 原始画面，
-未做修图。全部截图由 **QEMU 11.1.3** 运行 HYWOS 1.0.8 生成：
-ISO 启动询问 → Enter 安装 → 复制系统文件 → 创建 FAT16 引导分区 →
-移除 ISO 从硬盘启动 → 使用 F1–F8 切换各界面。
+依赖 Rust 稳定版与 `x86_64-unknown-uefi` target：
+
+```sh
+rustup target add x86_64-unknown-uefi
+cargo build --release
+sh tools/mkiso.sh
+```
+
+产物：
+
+- `build/hywos.iso`：可启动安装 ISO。
+- `build/esp/EFI/BOOT/BOOTX64.EFI`：可直接放入 ESP 的内核。
+- `build/hywos-<版本>.updpkg`：内核更新包。
+
+## 在 QEMU 中运行
+
+```sh
+qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
+  -bios /usr/share/ovmf/OVMF.fd \
+  -cdrom build/hywos.iso \
+  -drive file=build/install.img,format=raw,if=virtio
+```
+
+安装完成后移除 ISO，仅保留安装盘即可从硬盘启动。
+
+## 应用开发
+
+- 应用标识：`src/icon.rs` 的 `AppId`；名称、ID、颜色与图标同文件维护。
+- 轻量应用：在 `src/apps/suite.rs` 增加 `draw/click/key` 分支与状态字段。
+- 复杂应用：在 `src/apps/mod.rs` 注册独立 `AppState` 与绘制函数。
+- 持久化：使用 `fs::read_file/write_file/list_dir`，数据放在用户卷。
+- 窗口尺寸：`apps::app_size`；Dock 由 `ui.rs::DOCK_APPS` 驱动。
 
 ## 快捷键
 
@@ -224,172 +207,103 @@ ISO 启动询问 → Enter 安装 → 复制系统文件 → 创建 FAT16 引导
 |---|---|
 | `F1` | 启动台 |
 | `F2` | 天气 |
-| `F3` | 设置（权限页） |
+| `F3` | 设置 |
 | `F4` | 应用商店 |
 | `F5` | 关于本机 |
 | `F6` / `F8` | 文件 |
 | `F7` | 终端 |
 | `F12` | 截屏 |
-| `Esc` | 关闭启动台或当前窗口 |
+| `Esc` | 关闭当前窗口 / 启动台 |
 
-设置窗口内：`←` / `→` 切换页面；在「软件更新」页按 `C` 检查更新、`D` 下载并安装。
-安装程序界面：`Enter` 开始安装，`N` 或 `Esc` 取消且不修改磁盘。
+设置内：`←` / `→` 切页，`C` 检查更新，`D` 下载安装。
+安装程序：`Enter` 安装，`N` / `Esc` 取消。
+启动台：直接键入过滤中英文名称或应用 ID，`Enter` 启动第一项。
 
-启动台打开时直接键入即可过滤，匹配中文名称与英文 ID；`Enter` 启动第一项。
+## 界面截图
 
-## 中文支持
+| 启动动画（LOGO 淡入） | 安装程序 |
+|---|---|
+| ![启动](docs/screenshots/boot-large.png) | ![安装](docs/screenshots/installer.png) |
 
-`tools/gen_cjk.py` 生成 16×16 4bpp 点阵，覆盖 GB2312 一级与二级共 6786 字。
-`gfx::text` 自动 UTF-8 解码，ASCII 8×16 与中文 16×16 混排，宽度按实际字符计算。
-键盘当前处理 ASCII 输入，中文输入法不在范围内。
+| 安装进度 | 安装完成 |
+|---|---|
+| ![进度](docs/screenshots/progress.png) | ![完成](docs/screenshots/install-done.png) |
 
-## 终端
+| 桌面 | 启动台 |
+|---|---|
+| ![桌面](docs/screenshots/desktop.png) | ![启动台](docs/screenshots/launchpad.png) |
 
-`user@hywos:~$` 提供：
+| 设置 · 权限 | 设置 · 软件更新 |
+|---|---|
+| ![设置](docs/screenshots/settings.png) | ![更新](docs/screenshots/update.png) |
 
-```
-help  clear  ls  cd  pwd  cat  echo  mkdir  rm  cp  mv
-uname ps  free date df  mount whoami uptime weather
-screenshot  appstore  exit
-```
+| 应用商店 | 天气 |
+|---|---|
+| ![商店](docs/screenshots/store.png) | ![天气](docs/screenshots/weather.png) |
 
-## 文件系统与应用存储
+| 关于本机 | 终端 |
+|---|---|
+| ![关于](docs/screenshots/about.png) | ![终端](docs/screenshots/terminal.png) |
 
-```
-\home\user\
-├── .apps\<appid>.kv 与 _permissions
-├── Documents\
-├── Pictures\
-└── Screenshots\shot-NNNN.bmp
-```
+| 文件 | 安全中心 |
+|---|---|
+| ![文件](docs/screenshots/files.png) | ![安全](docs/screenshots/app-security.png) |
 
-`appstore_set/get/del` 每个应用独立 KV，值上限 120 字符。无可写卷时打印
-`no writable volume, RAM fallback` 并启用内存文件系统。
+| 浏览器 | 邮件 |
+|---|---|
+| ![浏览器](docs/screenshots/app-browser.png) | ![邮件](docs/screenshots/app-mail.png) |
 
-## 权限模型
+| 照片 | 视频 |
+|---|---|
+| ![照片](docs/screenshots/app-photos.png) | ![视频](docs/screenshots/app-videos.png) |
 
-`设置 → 权限` 控制存储、通知、网络；关闭存储后存储 API 真实拒绝，
-记录写入 `.apps/_permissions`。
+| 音乐 | 日历 |
+|---|---|
+| ![音乐](docs/screenshots/app-music.png) | ![日历](docs/screenshots/app-calendar.png) |
 
-## 截屏
+| 计算器 | 备忘录 |
+|---|---|
+| ![计算器](docs/screenshots/app-calculator.png) | ![备忘录](docs/screenshots/app-notes.png) |
 
-F12 / Print Screen 抓取 24 位 BMP，编号递增，状态栏提示；
-`设置 → 显示 → 立即截屏` 同样可用。
+| 地图 | 时钟 |
+|---|---|
+| ![地图](docs/screenshots/app-maps.png) | ![时钟](docs/screenshots/app-clock.png) |
 
-## 软件更新 .updpkg
+| 相机 | 通讯录 |
+|---|---|
+| ![相机](docs/screenshots/app-camera.png) | ![通讯录](docs/screenshots/app-contacts.png) |
 
-`CONLYUPD` 头 + CRC32，Files 双击打开 `设置 → 软件更新`。更新包可携带完整内核，
-应用时替换 `\EFI\BOOT\BOOTX64.EFI` 并更新 `\HYWOS\VERSION`；不支持文件替换的旧设备
-回退到目标 LBA（默认 64），不触碰用户数据卷。
+| 信息 |
+|---|
+| ![信息](docs/screenshots/app-messages.png) |
 
-`设置 → 软件更新 → 检查更新` 会请求 GitHub Releases 列表
-（`https://api.github.com/repos/lmxdg/HYWOS/releases`），解析 `tag_name`
-并与本地 1.0.8 比较。发现新版本后可从 `browser_download_url` 下载 `.updpkg`，
-保存到 `\updates\hywos-<版本>.updpkg` 后应用。固件没有 HTTP/TLS 服务或网络
-未配置时，会读取 `\updates\latest.json` 并扫描 `\updates` 中的更新包作为离线回退。
+截图由 QEMU 11.1.3 运行 HYWOS 1.1.0 生成，通过 VNC 抓取 framebuffer 原始画面，未做修图。
 
-## 构建
+## 版本历史
 
-```bash
-rustup target add x86_64-unknown-uefi
-cargo build --release --target x86_64-unknown-uefi
-sh tools/mkiso.sh
-```
-
-生成字体与 LOGO 数据：
-
-```bash
-python3 tools/gen_cjk.py
-python3 tools/gen_logo_data.py
-```
-
-产物：`build/hywos.iso`、`build/efiboot.img`、`build/usb.img`、
-`build/kdisk.img`、`build/hywos-1.0.8.updpkg`。
-
-## 在 QEMU 中运行
-
-标准 VGA + AC'97 + PS/2（驱动实测配置）：
-
-```bash
-qemu-system-x86_64 -M q35 -m 512 -smp 4 -usb \
-  -bios /usr/share/edk2/ovmf/OVMF.fd \
-  -vga std -device AC97 \
-  -drive file=build/install.img,format=raw,if=none,id=target \
-  -device virtio-blk-pci,drive=target \
-  -drive file=build/hywos.iso,media=cdrom,readonly=on \
-  -drive file=build/usb.img,if=none,id=usbdisk,format=raw \
-  -device usb-storage,drive=usbdisk \
-  -drive file=build/kdisk.img,if=none,id=kdisk,format=raw \
-  -device virtio-blk-pci,drive=kdisk \
-  -netdev user,id=n0 -device virtio-net-pci,netdev=n0
-```
-
-virtio-gpu / VMware SVGA：
-
-```bash
-# 需要 QEMU 构建包含 virtio-gpu-device
-qemu-system-x86_64 ... -device virtio-vga
-# SVGA II
-qemu-system-x86_64 ... -device vmware-svga
-```
-
-验证声卡输出可加 `-audiodev wav,id=snd,path=build/audio.wav -device AC97,audiodev=snd`，
-启动后会在 WAV 中看到启动和弦波形。
-
-## 源码结构
-
-```
-src/
-├── main.rs      EFI 入口、启动序列、panic 处理、mem* 实现
-├── efi.rs       手写 EFI 协议绑定
-├── port.rs      I/O 端口与 PCI 配置空间（CF8/CFC、BAR、Bus Master）
-├── video.rs     VBE / VMware SVGA II / virtio-gpu 2D 与刷新
-├── ps2.rs       8042 键盘与鼠标
-├── audio.rs     AC'97 DMA 播放与 PC Speaker
-├── gfx.rs       合成器、UTF-8 混排、圆角/渐变/抗锯齿
-├── font.rs      ASCII 4bpp 位图字体
-├── cjk.rs       GB2312 6786 字 16×16 点阵
-├── logo.rs      关于页 128×128 RGBA LOGO
-├── icon.rs      程序化图标 + 4× 超采样 + 64px 缓存
-├── anim.rs      星河开机动画
-├── hw.rs        ACPI MADT、CPUID、SNP、RTC、SimplePointer
-├── fs.rs        文件系统、RAM 回退、KV、权限、BMP、updpkg、Block I/O
-├── ui.rs        桌面、状态栏、Dock、启动台、窗口栈、双缓冲
-└── apps/mod.rs  终端 / 文件 / 设置 / 天气 / 商店 / 关于
-```
-
-## 设计说明
-
-**驱动选择**：`video::probe` 依次尝试 virtio-gpu、VMware SVGA II、VBE，
-任何一步成功即接管 framebuffer 与刷新；全部失败才使用 UEFI GOP。
-合成器仍渲染到后台缓冲，`present` 后由驱动执行 transfer/flush 或 SYNC。
-
-**PS/2**：初始化时禁用并重新启用扫描，读取时用 8042 状态端口 bit5 区分
-键盘与 AUX 鼠标数据，避免共享 0x60 端口的歧义。
-
-**AC'97**：冷复位后设置主音量与 PCM 音量、48kHz 采样率，构造 Buffer
-Descriptor List，写 BDBR/LVI 并置 RPBM 启动 DMA，播放三音和弦。
-
-**中文字体**：码点升序 + 二分查找，缺字回退空心方框。
-
-**图标**：256×256 画布绘制后 4×4 盒式降采样到 64×64，Dock 由大图缩小。
+| 版本 | 主题 | 发布 |
+|---|---|---|
+| 1.1.0 | 全应用可用、安全中心、LOGO 淡入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.0) |
+| 1.0.8 | 高分辨率显示、PS/2 重写、USB HID | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.8) |
+| 1.0.7 | 安装检测、安装流程、在线更新 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.7) |
+| 1.0.6 | 安装进度条 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.6) |
+| 1.0.5 | 硬盘检测、4Kn | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.5) |
+| 1.0.4 | ISO 安装介质、FAT16 引导 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.4) |
+| 1.0.3 | 粒子动画、现代输入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.3) |
+| 1.0.2 | 显卡/PS2/声卡驱动 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.2) |
+| 1.0.1 | 中文界面与 UI 重绘 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.1) |
+| 1.0.0 | 首个版本 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.0) |
 
 ## 现实边界
 
-真实实现：UEFI 启动、VBE 显卡、PS/2 键鼠、AC'97 DMA、GOP 回退、
-中文字体与混排、图标超采样、动画、ACPI/CPUID、SNP、KV、权限拒绝、
-BMP 截屏、CONLYUPD、Block I/O、终端文件操作。
-
-受限：
-
-- **virtio-gpu** modern 协议已实现，但 QEMU 11 + OVMF 将 64 位 BAR 分配在
-  0xC000000000，UEFI 应用侧队列通知未生效，仍需 PciIo.Map 映射；
-- **VMware SVGA II** 在当前 QEMU 固件下只能访问 index 寄存器，
-  SetMode 失败后回退 GOP；
-- 无自有 TCP/IP 协议栈，仅展示 SNP 的真实 MAC/链路状态；
-- 多核为拓扑真实 + 单核协作式调度，无 AP trampoline；
-- 文件系统为 FAT32；无中文输入法；
-- 固件无可写卷时使用内存文件系统，重启后数据丢失。
+- 网络：内核不含 TCP/IP 栈；浏览器与在线更新依赖固件 `EFI_HTTP_PROTOCOL`。
+  固件缺少 TLS 证书时，仅本地页面与离线更新可用。
+- 邮件、信息：本地记录与撰写，不连接 SMTP/短信网关。
+- 视频：播放 BMP 序列，不含 H.264/H.265 解码。
+- 相机：采集当前合成画面，不含 USB 摄像头驱动。
+- 病毒库：需用户提供 `VIRUS.DB`；仓库不内置样本签名。
+- 中文输入：显示完整，键盘输入为 ASCII；中文输入法不在范围内。
+- 分辨率：软件合成上限 1920×1080。
 
 ## 开源协议
 

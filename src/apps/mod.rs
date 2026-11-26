@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.0 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.1 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -101,6 +101,8 @@ impl Terminal {
                 self.print("df / mount  文件系统信息");
                 self.print("uname date ps uptime whoami");
                 self.print("weather     天气摘要");
+                self.print("net         网卡驱动与链路状态");
+                self.print("ping <IP>   ARP/ICMP 连通性测试");
                 self.print("screenshot  截取屏幕");
                 self.print("clear       清屏");
                 self.print("exit        关闭终端窗口");
@@ -204,7 +206,66 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.0 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.1 x86_64 UEFI (Rust no_std kernel)"),
+            "net" => {
+                let n = crate::net::info();
+                self.print(if n.present { "自研网卡驱动" } else { "未绑定自研驱动" });
+                if n.present {
+                    self.print(n.name);
+                    let mut b = [0u8; 32];
+                    let l = crate::net::fmt_mac(&mut b);
+                    let mut line = [0u8; 64];
+                    let mut ll = 0;
+                    for c in "MAC ".bytes() { line[ll] = c; ll += 1; }
+                    let mut i = 0;
+                    while i < l { line[ll] = b[i]; ll += 1; i += 1; }
+                    for c in " 链路 ".bytes() { line[ll] = c; ll += 1; }
+                    for c in (if n.link { "已连接" } else { "断开" }).bytes() { line[ll] = c; ll += 1; }
+                    self.print(core::str::from_utf8_unchecked(&line[..ll]));
+                    let mut b2 = [0u8; 48];
+                    let l1 = crate::net::fmt_ip(&mut b2, n.ip);
+                    let mut line2 = [0u8; 96];
+                    let mut k = 0;
+                    for c in "IP ".bytes() { line2[k] = c; k += 1; }
+                    let mut i = 0;
+                    while i < l1 { line2[k] = b2[i]; k += 1; i += 1; }
+                    for c in "  网关 ".bytes() { line2[k] = c; k += 1; }
+                    let mut b3 = [0u8; 24];
+                    let l2 = crate::net::fmt_ip(&mut b3, n.gw);
+                    i = 0;
+                    while i < l2 { line2[k] = b3[i]; k += 1; i += 1; }
+                    self.print(core::str::from_utf8_unchecked(&line2[..k]));
+                    let mut line3 = [0u8; 64];
+                    let mut k2 = 0;
+                    for c in "收包 ".bytes() { line3[k2] = c; k2 += 1; }
+                    k2 += crate::hw::num2(&mut line3[k2..], n.rx, 1);
+                    for c in "  发包 ".bytes() { line3[k2] = c; k2 += 1; }
+                    k2 += crate::hw::num2(&mut line3[k2..], n.tx, 1);
+                    self.print(core::str::from_utf8_unchecked(&line3[..k2]));
+                } else if crate::hw::net().present {
+                    self.print("固件 SNP 可用，HTTP 由固件提供");
+                }
+            }
+            "ping" => {
+                if na < 2 {
+                    self.print("用法: ping <IP>，例如 ping 10.0.2.2");
+                } else if let Some(ip) = crate::net::parse_ip(args[1]) {
+                    let ok = crate::net::ping(ip, 1500);
+                    let mut b = [0u8; 64];
+                    let mut l = 0;
+                    for c in "PING ".bytes() { b[l] = c; l += 1; }
+                    let mut i = 0;
+                    while i < 4 {
+                        l += crate::hw::num2(&mut b[l..], ip[i] as u32, 1);
+                        if i < 3 { b[l] = b'.'; l += 1; }
+                        i += 1;
+                    }
+                    for c in (if ok { ": 回复正常，链路可达" } else { ": 无回复（超时或未配置）" }).bytes() { b[l] = c; l += 1; }
+                    self.print(core::str::from_utf8_unchecked(&b[..l]));
+                } else {
+                    self.print("IP 格式错误");
+                }
+            }
             "ps" => {
                 self.print("  PID  CORE  STATE  NAME");
                 self.print("    1     0  run    init");
@@ -721,7 +782,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.0 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.1 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -881,11 +942,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.1.0", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "星河版 · 版本 1.1.1", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.0（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.1（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     g.text(vx, ry, "x86_64 · ACPI / CPUID 拓扑", rgb(68, 78, 98), 1);
@@ -898,6 +959,28 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     ry += 19;
     g.text(x + 22, ry, "音频", rgb(68, 78, 98), 1);
     g.text(vx, ry, crate::audio::name(), rgb(68, 78, 98), 1);
+    ry += 19;
+    g.text(x + 22, ry, "网卡", rgb(68, 78, 98), 1);
+    let nic = crate::net::info();
+    let mut nb = [0u8; 64];
+    let mut nl = 0usize;
+    if nic.present {
+        for c in nic.name.bytes() { if nl < 20 { nb[nl] = c; nl += 1; } }
+        for c in " · MAC ".as_bytes() { nb[nl] = *c; nl += 1; }
+        let mut k = 0;
+        while k < 6 {
+            let hi = nic.mac[k] >> 4;
+            let lo = nic.mac[k] & 0xf;
+            nb[nl] = if hi < 10 { b'0' + hi } else { b'a' + hi - 10 }; nl += 1;
+            nb[nl] = if lo < 10 { b'0' + lo } else { b'a' + lo - 10 }; nl += 1;
+            if k < 5 { nb[nl] = b':'; nl += 1; }
+            k += 1;
+        }
+    } else {
+        let txt = if crate::hw::net().present { "UEFI SNP（固件网络栈）" } else { "未发现网卡" };
+        for c in txt.bytes() { nb[nl] = c; nl += 1; }
+    }
+    g.text(vx, ry, core::str::from_utf8_unchecked(&nb[..nl]), rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "授权", rgb(68, 78, 98), 1);
     g.text(vx, ry, "MIT License", rgb(68, 78, 98), 1);
@@ -1144,7 +1227,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.0");
+            set_update_msg(s, true, "已是最新版本 1.1.1");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

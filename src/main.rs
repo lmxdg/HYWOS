@@ -10,6 +10,7 @@ mod http;
 mod input;
 mod installer;
 mod logo;
+mod net;
 mod port;
 mod ps2;
 mod updater;
@@ -37,7 +38,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.0 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.1.1 (x86_64 UEFI, Rust no_std)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -97,6 +98,11 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         hw::acpi_probe();
         debug_print("[stage] acpi done");
         hw::net_probe();
+        if net::init() {
+            debug_print("[net] driver bound");
+        } else {
+            debug_print("[net] firmware only");
+        }
         debug_print("[stage] net done");
         input::init();
         hw::pointer_init();

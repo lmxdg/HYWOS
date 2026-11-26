@@ -266,16 +266,17 @@ impl Suite {
         self.mon_t += 1;
         if self.mon_t % 24 == 0 { self.sample_mon(); }
         let top = y + 46;
-        let cw = (w - 40) / 4;
+        let cw = (w - 40) / 5;
         let (total, free) = hw::mem_kb();
         let cards = [
             ("处理器", 0, 0),
             ("内存", 1, 0),
             ("运行时间", 2, 0),
             ("实时防护", 3, 0),
+            ("网络", 4, 0),
         ];
         let mut i = 0;
-        while i < 4 {
+        while i < 5 {
             let cx = x + 14 + i as i32 * (cw + 6);
             panel(g, cx, top, cw, 70);
             g.text(cx + 12, top + 10, cards[i].0, SUB, 1);
@@ -296,7 +297,8 @@ impl Suite {
                     if ss < 10 { cat(&mut b, &mut l, "0"); }
                     catn(&mut b, &mut l, ss);
                 }
-                _ => { cat(&mut b, &mut l, "已开启"); }
+                3 => { cat(&mut b, &mut l, "已开启"); }
+                _ => {}
             }
             if i == 1 {
                 let mut m1 = [0u8; 24];
@@ -311,6 +313,16 @@ impl Suite {
                 catn(&mut m2, &mut l2, (total / 1024) as u32);
                 cat(&mut m2, &mut l2, " MB");
                 g.text(cx + 12, top + 50, core::str::from_utf8_unchecked(&m2[..l2]), SUB, 1);
+            } else if i == 4 {
+                let nic = crate::net::info();
+                let nm = match nic.kind {
+                    1 => "e1000",
+                    2 => "RTL8139",
+                    3 => "virtio-net",
+                    _ => "未发现",
+                };
+                g.text(cx + 12, top + 30, nm, TXT, 1);
+                g.text(cx + 12, top + 50, if nic.present { if nic.link { "链路 已连接" } else { "链路 断开" } } else { "固件 SNP" }, SUB, 1);
             } else {
                 g.text(cx + 12, top + 34, core::str::from_utf8_unchecked(&b[..l]), if i == 3 { GREEN } else { TXT }, 2);
             }
@@ -1596,8 +1608,8 @@ unsafe fn seed_home() {
     let seeds = [
         ("\\home\\user\\Notes\\welcome.txt", "欢迎使用 HYWOS 备忘录\nCtrl+S 保存，Enter 换行。\n"),
         ("\\home\\user\\Contacts\\contacts.txt", "HYWOS 支持|10086|support@hywos.local\n"),
-        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.0 信息|--:--\n"),
-        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.0|--:--\n"),
+        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.1 信息|--:--\n"),
+        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.1|--:--\n"),
     ];
     let mut i = 0;
     while i < seeds.len() {

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>当前版本 1.1.0 «星河»</b> · MIT · x86_64 UEFI
+  <b>当前版本 1.1.1 «星河»</b> · MIT · x86_64 UEFI
 </p>
 
 HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
@@ -100,6 +100,17 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 - USB HID 解析接口、端点与报告描述符，支持启动协议键盘、相对与绝对鼠标；
   仅在固件未提供对应驱动时接管。
 
+## 网络
+
+- 自研 PCI 网卡驱动：Intel 82540EM/82574L（e1000）、Realtek RTL8139、
+  virtio-net（legacy）。驱动完成 PCI 枚举、总线主控、DMA 收发环、MAC 与链路状态。
+- 最小协议栈：ARP 解析与 IPv4/ICMP Echo，终端 `ping <IP>` 可做连通性测试。
+- 默认静态配置：`10.0.2.15/24`，网关 `10.0.2.2`；可在终端 `net` 查看
+  驱动型号、MAC、链路、IP、收发计数。
+- 浏览器与在线更新仍使用固件 `EFI_HTTP_PROTOCOL`（含 TLS），内核 TCP/IP 栈不在本版本范围。
+- QEMU 实测：Intel e1000/82574L 与 virtio-net（legacy）完成 ARP/ICMP 与 ping；
+  RTL8139 驱动已实现，当前测试环境未完成收包验证。
+
 ## 音频
 
 - Intel AC'97（8086:2415）DMA 播放，48 kHz 16 位立体声。
@@ -113,7 +124,7 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 | 输入 | PS/2 8042、UEFI Ex/绝对指针/SimplePointer、USB HID |
 | 音频 | Intel AC'97；无设备时 PC Speaker |
 | 存储 | UEFI Block I/O + SimpleFileSystem，4Kn 支持 |
-| 网络 | SNP（MAC/链路），HTTP 由固件 `EFI_HTTP_PROTOCOL` 提供 |
+| 网络 | Intel e1000/82574L、Realtek RTL8139、virtio-net（legacy）；UEFI SNP 回退 |
 | 固件 | ACPI MADT、CPUID、RTC、SMBIOS 字符串 |
 
 ## 系统架构
@@ -245,6 +256,10 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|---|
 | ![关于](docs/screenshots/about.png) | ![终端](docs/screenshots/terminal.png) |
 
+| 终端 · net | 终端 · ping |
+|---|---|
+| ![net](docs/screenshots/terminal-net.png) | ![ping](docs/screenshots/terminal-ping.png) |
+
 | 文件 | 安全中心 |
 |---|---|
 | ![文件](docs/screenshots/files.png) | ![安全](docs/screenshots/app-security.png) |
@@ -283,6 +298,7 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 
 | 版本 | 主题 | 发布 |
 |---|---|---|
+| 1.1.1 | 自研网卡驱动与 ARP/ICMP | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.1) |
 | 1.1.0 | 全应用可用、安全中心、LOGO 淡入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.0) |
 | 1.0.8 | 高分辨率显示、PS/2 重写、USB HID | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.8) |
 | 1.0.7 | 安装检测、安装流程、在线更新 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.7) |
@@ -296,8 +312,8 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 
 ## 现实边界
 
-- 网络：内核不含 TCP/IP 栈；浏览器与在线更新依赖固件 `EFI_HTTP_PROTOCOL`。
-  固件缺少 TLS 证书时，仅本地页面与离线更新可用。
+- 网络：自研驱动提供二层收发与 ARP/ICMP；内核仍不含 TCP/UDP 传输层，
+  浏览器与在线更新依赖固件 `EFI_HTTP_PROTOCOL`（含 TLS）。
 - 邮件、信息：本地记录与撰写，不连接 SMTP/短信网关。
 - 视频：播放 BMP 序列，不含 H.264/H.265 解码。
 - 相机：采集当前合成画面，不含 USB 摄像头驱动。

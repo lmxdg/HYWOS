@@ -1,11 +1,11 @@
 [
   {
-    "tag_name": "v1.1.1",
-    "name": "HYWOS 1.1.1 «星河 · 全应用与安全版»",
+    "tag_name": "v1.1.2",
+    "name": "HYWOS 1.1.2 «星河 · 全应用与安全版»",
     "assets": [
       {
-        "name": "hywos-1.1.1.updpkg",
-        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.1/hywos-1.1.1.updpkg"
+        "name": "hywos-1.1.2.updpkg",
+        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.2/hywos-1.1.2.updpkg"
       }
     ]
   }

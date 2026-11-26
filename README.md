@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>当前版本 1.1.1 «星河»</b> · MIT · x86_64 UEFI
+  <b>当前版本 1.1.2 «星河»</b> · MIT · x86_64 UEFI
 </p>
 
 HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
@@ -23,6 +23,7 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - [输入](#输入)
 - [音频](#音频)
 - [硬件与驱动](#硬件与驱动)
+- [Ring3 与双页表](#ring3-与双页表)
 - [系统架构](#系统架构)
 - [文件系统与数据](#文件系统与数据)
 - [构建](#构建)
@@ -126,6 +127,22 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 | 存储 | UEFI Block I/O + SimpleFileSystem，4Kn 支持 |
 | 网络 | Intel e1000/82574L、Realtek RTL8139、virtio-net（legacy）；UEFI SNP 回退 |
 | 固件 | ACPI MADT、CPUID、RTC、SMBIOS 字符串 |
+
+## Ring3 与双页表
+
+- **用户态（CPL3）**：自定义 GDT 在固件 GDT 基础上追加用户代码/数据段、内核数据段与
+  64 位 TSS；TSS.RSP0 指向独立内核栈，`int 0x80` 从用户态进入内核时自动切换栈。
+- **双页表**：
+  - 内核页表：identity 映射 0–4 GB（2 MB 大页，U/S=0），供内核/UEFI 使用。
+  - 用户页表：复制内核映射，并在 PML4[128] 建立用户代码与用户栈
+    （`0x0000_4000_0000_0000` / `+0x1000`，各级 U/S=1）。
+  - 进入用户程序时切换 CR3；退出/异常时恢复内核 CR3。
+- **系统调用**：`int 0x80`，调用号 1=输出、2=退出、3=运行时间；
+  DPL=3 的中断门，参数与结果通过寄存器传递。
+- **异常隔离**：IDT 覆盖 #PF/#GP/#UD/#DF；用户态访问内核地址（如 `0x1000`）
+  触发 #PF，处理程序记录 CR2 后安全返回内核，系统继续运行。
+- **验证入口**：终端 `ring3` 运行正常 syscall/exit 程序，`ring3f` 运行页错误隔离测试；
+  关于本机显示“Ring0 内核 · Ring3 用户态 · 双页表”。
 
 ## 系统架构
 
@@ -260,6 +277,10 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|---|
 | ![net](docs/screenshots/terminal-net.png) | ![ping](docs/screenshots/terminal-ping.png) |
 
+| 终端 · Ring3 | 终端 · 页表隔离 |
+|---|---|
+| ![ring3](docs/screenshots/terminal-ring3.png) | ![ring3f](docs/screenshots/terminal-ring3f.png) |
+
 | 文件 | 安全中心 |
 |---|---|
 | ![文件](docs/screenshots/files.png) | ![安全](docs/screenshots/app-security.png) |
@@ -298,6 +319,7 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 
 | 版本 | 主题 | 发布 |
 |---|---|---|
+| 1.1.2 | Ring3 用户态与双页表 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.2) |
 | 1.1.1 | 自研网卡驱动与 ARP/ICMP | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.1) |
 | 1.1.0 | 全应用可用、安全中心、LOGO 淡入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.0) |
 | 1.0.8 | 高分辨率显示、PS/2 重写、USB HID | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.8) |
@@ -319,6 +341,7 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 - 相机：采集当前合成画面，不含 USB 摄像头驱动。
 - 病毒库：需用户提供 `VIRUS.DB`；仓库不内置样本签名。
 - 中文输入：显示完整，键盘输入为 ASCII；中文输入法不在范围内。
+- 用户态：内置固定用户程序用于验证 Ring3/syscall/隔离，尚未实现 ELF 加载器与独立用户进程管理。
 - 分辨率：软件合成上限 1920×1080。
 
 ## 开源协议

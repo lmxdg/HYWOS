@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.1 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.2 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -102,6 +102,8 @@ impl Terminal {
                 self.print("uname date ps uptime whoami");
                 self.print("weather     天气摘要");
                 self.print("net         网卡驱动与链路状态");
+                self.print("ring3       运行 Ring3 用户态程序（双页表）");
+                self.print("ring3f      Ring3 页表隔离测试");
                 self.print("ping <IP>   ARP/ICMP 连通性测试");
                 self.print("screenshot  截取屏幕");
                 self.print("clear       清屏");
@@ -206,7 +208,27 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.1 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.2 x86_64 UEFI (Rust no_std kernel)"),
+            "ring3" => {
+                let r = crate::ring3::run(false);
+                let mut i = 0;
+                while i < r.len() {
+                    let mut e = i;
+                    while e < r.len() && r.as_bytes()[e] != b'\n' { e += 1; }
+                    if e > i { self.print(&r[i..e]); }
+                    i = e + 1;
+                }
+            }
+            "ring3f" => {
+                let r = crate::ring3::run(true);
+                let mut i = 0;
+                while i < r.len() {
+                    let mut e = i;
+                    while e < r.len() && r.as_bytes()[e] != b'\n' { e += 1; }
+                    if e > i { self.print(&r[i..e]); }
+                    i = e + 1;
+                }
+            }
             "net" => {
                 let n = crate::net::info();
                 self.print(if n.present { "自研网卡驱动" } else { "未绑定自研驱动" });
@@ -511,7 +533,7 @@ pub fn app_size(id: AppId) -> (i32, i32) {
         AppId::Settings => (760, 500),
         AppId::Weather => (520, 430),
         AppId::Store => (680, 470),
-        AppId::About => (620, 420),
+        AppId::About => (620, 460),
         AppId::Security => (720, 520),
         AppId::Calculator => (420, 460),
         AppId::Calendar => (620, 500),
@@ -782,7 +804,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.1 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.2 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -942,11 +964,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.1.1", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "星河版 · 版本 1.1.2", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.1（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.2（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     g.text(vx, ry, "x86_64 · ACPI / CPUID 拓扑", rgb(68, 78, 98), 1);
@@ -981,6 +1003,9 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
         for c in txt.bytes() { nb[nl] = c; nl += 1; }
     }
     g.text(vx, ry, core::str::from_utf8_unchecked(&nb[..nl]), rgb(68, 78, 98), 1);
+    ry += 19;
+    g.text(x + 22, ry, "特权", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "Ring0 内核 · Ring3 用户态 · 双页表", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "授权", rgb(68, 78, 98), 1);
     g.text(vx, ry, "MIT License", rgb(68, 78, 98), 1);
@@ -1227,7 +1252,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.1");
+            set_update_msg(s, true, "已是最新版本 1.1.2");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

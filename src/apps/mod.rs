@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.2 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.3 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -101,6 +101,7 @@ impl Terminal {
                 self.print("df / mount  文件系统信息");
                 self.print("uname date ps uptime whoami");
                 self.print("weather     天气摘要");
+                self.print("kernel      宏内核子系统状态");
                 self.print("net         网卡驱动与链路状态");
                 self.print("ring3       运行 Ring3 用户态程序（双页表）");
                 self.print("ring3f      Ring3 页表隔离测试");
@@ -208,7 +209,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.2 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.3 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -229,8 +230,30 @@ impl Terminal {
                     i = e + 1;
                 }
             }
+            "kernel" => {
+                self.print("HYWOS 宏内核（Monolithic）");
+                let mut b = [0u8; 64];
+                let l = crate::kernel::status_line(&mut b);
+                self.print(core::str::from_utf8_unchecked(&b[..l]));
+                let mut i = 0;
+                while i < crate::kernel::SUBSYS_TOTAL {
+                    let sub = &crate::kernel::subs()[i];
+                    let mut line = [0u8; 92];
+                    let mut k = 0;
+                    line[k] = b'#'; k += 1;
+                    k += crate::hw::num2(&mut line[k..], i as u32 + 1, 1);
+                    line[k] = b' '; k += 1;
+                    for c in sub.name.bytes() { if k < 86 { line[k] = c; k += 1; } }
+                    for c in " · ".bytes() { if k < 88 { line[k] = c; k += 1; } }
+                    for c in crate::kernel::state_name(sub.state).bytes() { if k < 88 { line[k] = c; k += 1; } }
+                    for c in " · ".bytes() { if k < 90 { line[k] = c; k += 1; } }
+                    for c in sub.detail.bytes() { if k < 91 { line[k] = c; k += 1; } }
+                    self.print(core::str::from_utf8_unchecked(&line[..k]));
+                    i += 1;
+                }
+            }
             "net" => {
-                let n = crate::net::info();
+                let n = crate::kernel::net_info();
                 self.print(if n.present { "自研网卡驱动" } else { "未绑定自研驱动" });
                 if n.present {
                     self.print(n.name);
@@ -272,7 +295,7 @@ impl Terminal {
                 if na < 2 {
                     self.print("用法: ping <IP>，例如 ping 10.0.2.2");
                 } else if let Some(ip) = crate::net::parse_ip(args[1]) {
-                    let ok = crate::net::ping(ip, 1500);
+                    let ok = crate::kernel::ping(ip, 1500);
                     let mut b = [0u8; 64];
                     let mut l = 0;
                     for c in "PING ".bytes() { b[l] = c; l += 1; }
@@ -804,7 +827,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.2 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.3 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -964,26 +987,30 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.1.2", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "星河版 · 版本 1.1.3", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.2（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.3（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "x86_64 · ACPI / CPUID 拓扑", rgb(68, 78, 98), 1);
+    let mut ab = [0u8; 64];
+    let mut al = 0;
+    for c in "x86_64 · ".bytes() { ab[al] = c; al += 1; }
+    al += crate::kernel::status_line(&mut ab[al..]);
+    g.text(vx, ry, core::str::from_utf8_unchecked(&ab[..al]), rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "显卡", rgb(68, 78, 98), 1);
-    g.text(vx, ry, crate::video::name(), rgb(68, 78, 98), 1);
+    g.text(vx, ry, crate::kernel::video_name(), rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "输入", rgb(68, 78, 98), 1);
-    g.text(vx, ry, if crate::input::modern_keyboard() || crate::input::absolute_pointer() { crate::input::describe() } else if crate::ps2::mouse_ok() { "PS/2 键盘与鼠标（8042）" } else { "UEFI 固件输入" }, rgb(68, 78, 98), 1);
+    g.text(vx, ry, crate::kernel::input_desc(), rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "音频", rgb(68, 78, 98), 1);
-    g.text(vx, ry, crate::audio::name(), rgb(68, 78, 98), 1);
+    g.text(vx, ry, crate::kernel::audio_name(), rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "网卡", rgb(68, 78, 98), 1);
-    let nic = crate::net::info();
+    let nic = crate::kernel::net_info();
     let mut nb = [0u8; 64];
     let mut nl = 0usize;
     if nic.present {
@@ -1252,7 +1279,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.2");
+            set_update_msg(s, true, "已是最新版本 1.1.3");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

@@ -13,6 +13,7 @@ mod logo;
 mod net;
 mod port;
 mod ps2;
+mod kernel;
 mod ring3;
 mod updater;
 mod usbhid;
@@ -39,7 +40,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.2 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.1.3 (x86_64 UEFI, Rust no_std)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -131,6 +132,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         serial_print("[input] firmware input kept in control");
         audio::init();
+        kernel::init();
         debug_print("[stage] pointer done");
         hw::cache_time();
         debug_print("[stage] rtc cached");
@@ -145,6 +147,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         let _ = vols;
 
         debug_print("[stage] ui begin");
+        kernel::ui_ready();
         let mut ui = ui::Ui::new(g);
         audio::chime();
         debug_print("[stage] ui loop");

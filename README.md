@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>当前版本 1.1.2 «星河»</b> · MIT · x86_64 UEFI
+  <b>当前版本 1.1.3 «星河»</b> · MIT · x86_64 UEFI
 </p>
 
 HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
@@ -23,6 +23,7 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - [输入](#输入)
 - [音频](#音频)
 - [硬件与驱动](#硬件与驱动)
+- [宏内核（Monolithic）](#宏内核monolithic)
 - [Ring3 与双页表](#ring3-与双页表)
 - [系统架构](#系统架构)
 - [文件系统与数据](#文件系统与数据)
@@ -38,6 +39,8 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 ## 设计目标
 
 - **零依赖**：不引入任何 crate，直接手写 UEFI 协议绑定、图形合成、文件系统与驱动。
+- **宏内核**：驱动、文件系统、网络、音频、图形与桌面全部运行在 ring0 单地址空间，
+  统一由内核子系统层管理；用户程序通过 `int 0x80` 进入内核系统调用。
 - **真实可用**：桌面上的每个应用都有实际功能与持久化数据，不使用占位页面。
 - **本地优先**：数据写入用户卷；网络能力由固件 HTTP 提供，离线时功能完整。
 - **可安装、可更新**：ISO 安装到本地磁盘，`.updpkg` 更新内核并保留用户数据。
@@ -128,6 +131,28 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 | 网络 | Intel e1000/82574L、Realtek RTL8139、virtio-net（legacy）；UEFI SNP 回退 |
 | 固件 | ACPI MADT、CPUID、RTC、SMBIOS 字符串 |
 
+## 宏内核（Monolithic）
+
+HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空间，模块之间通过
+内核 API 直接调用，避免微内核的 IPC 开销。
+
+| # | 子系统 | 职责 | 实现 |
+|---|---|---|---|
+| 1 | Video | 显卡探测、framebuffer、模式设置 | `video.rs` / `gfx.rs` |
+| 2 | Input | PS/2、USB HID、UEFI 指针、键盘 | `input.rs` / `ps2.rs` / `usbhid.rs` |
+| 3 | Storage | 卷、FAT16/FAT32、文件与目录 | `fs.rs` / `diskfmt.rs` |
+| 4 | Network | e1000/82574L、RTL8139、virtio-net、ARP/ICMP | `net.rs` |
+| 5 | Audio | AC'97 DMA 与 PC Speaker | `audio.rs` |
+| 6 | UI | 合成器、窗口、Dock、启动台、应用 | `ui.rs` / `apps/` |
+| 7 | Ring3 | GDT/TSS/IDT、双页表、用户程序 | `ring3.rs` |
+| 8 | Updates | `.updpkg`、GitHub Releases、离线回退 | `updater.rs` / `http.rs` |
+
+- `src/kernel.rs` 维护子系统状态、提供统一内核 API（CPU/内存/运行时间/网卡/
+  音视频/窗口等）与系统调用入口 `kernel::syscall`。
+- 终端 `kernel` 命令列出 8 个子系统的状态与说明；关于本机与安全中心显示
+  “宏内核 · N/8 子系统就绪”。
+- 宏内核不排斥用户态：Ring3 程序仍可通过 `int 0x80` 请求内核服务。
+
 ## Ring3 与双页表
 
 - **用户态（CPL3）**：自定义 GDT 在固件 GDT 基础上追加用户代码/数据段、内核数据段与
@@ -159,6 +184,7 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 |---|---|
 | `src/main.rs` | EFI 入口、启动流程、内存函数 |
 | `src/efi.rs` | UEFI 协议绑定、ConIn、CRC32、内存映射 |
+| `src/kernel.rs` | 宏内核子系统表、统一内核 API、系统调用入口 |
 | `src/video.rs` | virtio-gpu / SVGA / VBE / GOP |
 | `src/gfx.rs` | 32bpp 合成、UTF-8 混排、圆角/渐变/位图 |
 | `src/cjk.rs` | GB2312 点阵字库（6786 字） |
@@ -281,6 +307,10 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|---|
 | ![ring3](docs/screenshots/terminal-ring3.png) | ![ring3f](docs/screenshots/terminal-ring3f.png) |
 
+| 终端 · 宏内核子系统 |
+|---|
+| ![kernel](docs/screenshots/terminal-kernel.png) |
+
 | 文件 | 安全中心 |
 |---|---|
 | ![文件](docs/screenshots/files.png) | ![安全](docs/screenshots/app-security.png) |
@@ -319,6 +349,7 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 
 | 版本 | 主题 | 发布 |
 |---|---|---|
+| 1.1.3 | 宏内核子系统与统一内核 API | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.3) |
 | 1.1.2 | Ring3 用户态与双页表 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.2) |
 | 1.1.1 | 自研网卡驱动与 ARP/ICMP | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.1) |
 | 1.1.0 | 全应用可用、安全中心、LOGO 淡入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.0) |

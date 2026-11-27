@@ -354,25 +354,18 @@ pub extern "C" fn ring3_exception_dispatch() {
 
 fn syscall_impl(num: u64, a1: u64, a2: u64) -> u64 {
     unsafe {
-        match num {
-            1 => {
-                if a1 >= USER_BASE && a1 < USER_BASE + 0x2000 && a2 <= 256 {
-                    let p = a1 as *const u8;
-                    let mut b = [0u8; 256];
-                    let mut i = 0;
-                    while i < a2 as usize { b[i] = *p.add(i); i += 1; }
-                    if let Ok(s) = core::str::from_utf8(&b[..a2 as usize]) { push(s); }
-                }
+        match crate::kernel::syscall(num, a1, a2) {
+            crate::kernel::SysResult::Console(s) => {
+                if let Ok(t) = core::str::from_utf8(s) { push(t); }
                 0
             }
-            2 => {
+            crate::kernel::SysResult::Value(v) => v,
+            crate::kernel::SysResult::Exit => {
                 EXIT_CALLED = true;
                 push("\n[ring3] exit syscall, return to kernel\n");
                 leave_user();
             }
-            3 => crate::hw::uptime_secs() as u64,
-
-            _ => 0xFFFF_FFFF,
+            crate::kernel::SysResult::Unknown => 0xFFFF_FFFF,
         }
     }
 }

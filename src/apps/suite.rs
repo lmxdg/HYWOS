@@ -150,7 +150,7 @@ impl Suite {
         let e = Suite::empty();
         *self = e;
         seed_home();
-        self.boot_secs = hw::uptime_secs();
+        self.boot_secs = crate::kernel::uptime();
         match id {
             AppId::Calculator => {
                 cat(&mut self.calc_out, &mut self.calc_olen, "0");
@@ -180,7 +180,7 @@ impl Suite {
 
     // ---------- 安全中心 ----------
     unsafe fn sample_mon(&mut self) {
-        let (total, free) = hw::mem_kb();
+        let (total, free) = crate::kernel::mem_stats();
         let pct = if total > 0 { (free * 100 / total) as u8 } else { 0 };
         if self.mon_n < 40 {
             self.mon[self.mon_n] = pct;
@@ -267,7 +267,7 @@ impl Suite {
         if self.mon_t % 24 == 0 { self.sample_mon(); }
         let top = y + 46;
         let cw = (w - 40) / 5;
-        let (total, free) = hw::mem_kb();
+        let (total, free) = crate::kernel::mem_stats();
         let cards = [
             ("处理器", 0, 0),
             ("内存", 1, 0),
@@ -283,10 +283,10 @@ impl Suite {
             let mut b = [0u8; 32];
             let mut l = 0;
             match i {
-                0 => { catn(&mut b, &mut l, hw::cores() as u32); cat(&mut b, &mut l, " 核"); }
+                0 => { catn(&mut b, &mut l, crate::kernel::cores()); cat(&mut b, &mut l, " 核"); }
                 1 => {}
                 2 => {
-                    let s = hw::uptime_secs();
+                    let s = crate::kernel::uptime();
                     catn(&mut b, &mut l, s / 3600);
                     cat(&mut b, &mut l, ":");
                     let m = (s / 60) % 60;
@@ -314,7 +314,7 @@ impl Suite {
                 cat(&mut m2, &mut l2, " MB");
                 g.text(cx + 12, top + 50, core::str::from_utf8_unchecked(&m2[..l2]), SUB, 1);
             } else if i == 4 {
-                let nic = crate::net::info();
+                let nic = crate::kernel::net_info();
                 let nm = match nic.kind {
                     1 => "e1000",
                     2 => "RTL8139",
@@ -379,6 +379,9 @@ impl Suite {
             g.text(x + 18, ly + 20 + j as i32 * 18, core::str::from_utf8_unchecked(&line[..n]), TXT, 1);
             j += 1;
         }
+        let mut kb = [0u8; 64];
+        let kl = crate::kernel::status_line(&mut kb);
+        g.text(x + 18, y + h - 24, core::str::from_utf8_unchecked(&kb[..kl]), SUB, 1);
     }
 
     unsafe fn security_click(&mut self, lx: i32, ly: i32, w: i32) -> bool {
@@ -569,7 +572,7 @@ impl Suite {
 
         let sx = x + w - 240;
         g.text(sx, y + 60, "秒表", SUB, 1);
-        let el = if self.sw_run { hw::uptime_secs().saturating_sub(self.sw_base) } else { self.sw_at };
+        let el = if self.sw_run { crate::kernel::uptime().saturating_sub(self.sw_base) } else { self.sw_at };
         let mut s = [0u8; 16];
         let mut sl = 0;
         catn(&mut s, &mut sl, el / 60);
@@ -1501,8 +1504,8 @@ pub unsafe fn key(st: &mut Suite, id: AppId, scan: u16, ch: u16) -> bool {
         }
         AppId::Clock => {
             if ch == 32 {
-                if st.sw_run { st.sw_at = hw::uptime_secs().saturating_sub(st.sw_base); st.sw_run = false; }
-                else { st.sw_base = hw::uptime_secs(); st.sw_run = true; }
+                if st.sw_run { st.sw_at = crate::kernel::uptime().saturating_sub(st.sw_base); st.sw_run = false; }
+                else { st.sw_base = crate::kernel::uptime(); st.sw_run = true; }
                 true
             } else if ch == b'r' as u16 || ch == b'R' as u16 { st.sw_run = false; st.sw_at = 0; true }
             else { false }
@@ -1565,8 +1568,8 @@ pub unsafe fn click(st: &mut Suite, id: AppId, lx: i32, ly: i32, x: i32, y: i32,
         AppId::Clock => {
             if ly > 178 && ly < 218 {
                 if lx > w - 240 && lx < w - 144 {
-                    if st.sw_run { st.sw_at = hw::uptime_secs().saturating_sub(st.sw_base); st.sw_run = false; }
-                    else { st.sw_base = hw::uptime_secs(); st.sw_run = true; }
+                    if st.sw_run { st.sw_at = crate::kernel::uptime().saturating_sub(st.sw_base); st.sw_run = false; }
+                    else { st.sw_base = crate::kernel::uptime(); st.sw_run = true; }
                     return true;
                 }
                 if lx > w - 134 && lx < w - 46 { st.sw_run = false; st.sw_at = 0; return true; }
@@ -1608,8 +1611,8 @@ unsafe fn seed_home() {
     let seeds = [
         ("\\home\\user\\Notes\\welcome.txt", "欢迎使用 HYWOS 备忘录\nCtrl+S 保存，Enter 换行。\n"),
         ("\\home\\user\\Contacts\\contacts.txt", "HYWOS 支持|10086|support@hywos.local\n"),
-        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.2 信息|--:--\n"),
-        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.2|--:--\n"),
+        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.3 信息|--:--\n"),
+        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.3|--:--\n"),
     ];
     let mut i = 0;
     while i < seeds.len() {

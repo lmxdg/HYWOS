@@ -22,8 +22,8 @@ def build(payload: bytes, version: int = 1) -> bytes:
     return head + payload
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else "build/hywos-1.1.2.updpkg"
-    version = sys.argv[2] if len(sys.argv) > 2 else "1.1.2"
+    out = sys.argv[1] if len(sys.argv) > 1 else "build/hywos-1.1.3.updpkg"
+    version = sys.argv[2] if len(sys.argv) > 2 else "1.1.3"
     if len(sys.argv) > 3:
         with open(sys.argv[3], "rb") as fh:
             payload = fh.read()

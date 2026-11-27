@@ -1,5 +1,5 @@
-HYWOS 1.1.3 "Harmony of Stars"
-=============================
+HYWOS 1.1.4
+============
 
 Welcome to HYWOS, a 64-bit operating system written in Rust.
 
@@ -9,13 +9,14 @@ so it survives a reboot.
 
 Quick tour
 ----------
-  F1   Launchpad
-  F2   Weather
-  F3   Settings / Permissions
-  F4   App Store
-  F5   About
-  F6   Files
-  F12  Screenshot (writes 24-bit BMP to /home/user/Screenshots)
+  Super / 0    Launchpad
+  W            Terminal (desktop)
+  Tab          Switch windows
+  F10 / Menu   Desktop context menu
+  F11          Maximize / restore
+  F2           Screenshot (24-bit BMP)
+  F4           Close window
+  Esc          Close menu / launchpad
 
 Terminal
 --------
@@ -26,6 +27,8 @@ Click the Terminal icon in the dock, then try:
   cat welcome.txt
   uname
   date
+  net
+  http http://10.0.2.2/
 
 Software updates
 ----------------

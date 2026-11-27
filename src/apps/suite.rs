@@ -163,6 +163,10 @@ impl Suite {
             }
             AppId::Browser => {
                 self.load_home();
+                let u = b"http://10.0.2.2/";
+                let mut i = 0;
+                while i < u.len() { self.url[i] = u[i]; i += 1; }
+                self.url_len = u.len();
             }
             AppId::Notes => {
                 self.note_open(0);
@@ -647,20 +651,42 @@ impl Suite {
             if self.url_len == 0 { return true; }
             let u = core::str::from_utf8_unchecked(&self.url[..self.url_len]);
             let mut buf = [0u8; 1600];
-            match crate::http::get(u, &mut buf) {
-                Ok(n) => {
-                    self.page_len = 0;
-                    let mut k = 0;
-                    while k < n && k < 1500 {
-                        let c = buf[k];
-                        if c == b'\r' { k += 1; continue; }
-                        self.page[self.page_len] = if c < 0x20 && c != b'\n' { b' ' } else { c };
-                        self.page_len += 1;
-                        k += 1;
+            let is_http = u.starts_with("http://");
+            let is_https = u.starts_with("https://");
+            if is_http {
+                match crate::netstack::http_get(u, &mut buf) {
+                    Some(n) => {
+                        self.page_len = 0;
+                        let mut k = 0;
+                        while k < n && k < 1500 {
+                            let c = buf[k];
+                            if c == b'\r' { k += 1; continue; }
+                            self.page[self.page_len] = if c < 0x20 && c != b'\n' { b' ' } else { c };
+                            self.page_len += 1;
+                            k += 1;
+                        }
+                        self.msg("页面已加载（自研 TCP/IP）", true);
                     }
-                    self.msg("页面已加载", true);
+                    None => self.msg("自研 TCP/IP 请求失败：检查 DHCP/网关/DNS", false),
                 }
-                Err(_) => self.msg("无法访问该网址，请检查网络或固件 HTTP", false),
+            } else if is_https {
+                match crate::http::get(u, &mut buf) {
+                    Ok(n) => {
+                        self.page_len = 0;
+                        let mut k = 0;
+                        while k < n && k < 1500 {
+                            let c = buf[k];
+                            if c == b'\r' { k += 1; continue; }
+                            self.page[self.page_len] = if c < 0x20 && c != b'\n' { b' ' } else { c };
+                            self.page_len += 1;
+                            k += 1;
+                        }
+                        self.msg("页面已加载（固件 HTTPS）", true);
+                    }
+                    Err(_) => self.msg("固件 HTTPS 不可用；请使用 http:// 地址", false),
+                }
+            } else {
+                self.msg("请输入 http:// 或 https:// 地址", false);
             }
             return true;
         }
@@ -1611,8 +1637,8 @@ unsafe fn seed_home() {
     let seeds = [
         ("\\home\\user\\Notes\\welcome.txt", "欢迎使用 HYWOS 备忘录\nCtrl+S 保存，Enter 换行。\n"),
         ("\\home\\user\\Contacts\\contacts.txt", "HYWOS 支持|10086|support@hywos.local\n"),
-        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.3 信息|--:--\n"),
-        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.3|--:--\n"),
+        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.4 信息|--:--\n"),
+        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.4|--:--\n"),
     ];
     let mut i = 0;
     while i < seeds.len() {

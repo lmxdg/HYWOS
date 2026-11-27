@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>当前版本 1.1.3 «星河»</b> · MIT · x86_64 UEFI
+  <b>开源 · MIT · x86_64 UEFI</b>
 </p>
 
 HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
@@ -32,7 +32,6 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - [应用开发](#应用开发)
 - [快捷键](#快捷键)
 - [界面截图](#界面截图)
-- [版本历史](#版本历史)
 - [现实边界](#现实边界)
 - [开源协议](#开源协议)
 
@@ -42,19 +41,19 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - **宏内核**：驱动、文件系统、网络、音频、图形与桌面全部运行在 ring0 单地址空间，
   统一由内核子系统层管理；用户程序通过 `int 0x80` 进入内核系统调用。
 - **真实可用**：桌面上的每个应用都有实际功能与持久化数据，不使用占位页面。
-- **本地优先**：数据写入用户卷；网络能力由固件 HTTP 提供，离线时功能完整。
+- **本地优先**：数据写入用户卷；自研 TCP/IP 栈提供明文 HTTP，TLS 由固件 HTTP 承担，离线时功能完整。
 - **可安装、可更新**：ISO 安装到本地磁盘，`.updpkg` 更新内核并保留用户数据。
 
 ## 应用套件
 
 | 应用 | 能力 | 数据位置 |
 |---|---|---|
-| 终端 | 27 条命令：文件、系统、网络、截屏、更新 | 当前目录 |
+| 终端 | 文件、系统、网络（DHCP/DNS/TCP/HTTP）、截屏、更新 | 当前目录 |
 | 文件 | 浏览用户卷，双击打开文本/更新包 | 用户卷 |
 | 设置 | 显示、权限、软件更新、关于本机 | `\home\user\.apps` |
 | 应用商店 | 安装状态持久化 | `\home\user\.apps` |
 | 关于本机 | 显卡/输入/音频/CPU/内存真实信息 | 只读 |
-| 浏览器 | 本地页面、UEFI HTTP 打开网址 | `\HYWOS\SYSTEM` |
+| 浏览器 | 本地页面、自研 HTTP 与固件 HTTPS 打开网址 | `\HYWOS\SYSTEM` |
 | 邮件 | 本地收件箱/发件箱，撰写保存 | `\home\user\Mail` |
 | 照片 | 解码浏览 24 位 BMP | `\home\user\Pictures` |
 | 音乐 | 播放 PCM WAV，内置音阶 | `\home\user\Music` |
@@ -89,7 +88,7 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 - 显卡探测顺序：virtio-gpu（legacy 2D）→ VMware SVGA II → VBE → UEFI GOP。
 - SVGA 读取 `MAX_WIDTH/MAX_HEIGHT` 选择安全模式，并校验 32bpp。
 - 软件合成器支持到 **1920×1080**；1024×768 与 1280×800 均完整显示状态栏与 Dock。
-- 启动动画：LOGO 淡入 + `HYWOS` 文字，无副标题，约 2.4 秒。
+- 启动动画：新 LOGO 由小到大缓入，`HYWOS` 字标同步淡入，约 2.4 秒。
 
 ## 输入
 
@@ -108,12 +107,17 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 
 - 自研 PCI 网卡驱动：Intel 82540EM/82574L（e1000）、Realtek RTL8139、
   virtio-net（legacy）。驱动完成 PCI 枚举、总线主控、DMA 收发环、MAC 与链路状态。
-- 最小协议栈：ARP 解析与 IPv4/ICMP Echo，终端 `ping <IP>` 可做连通性测试。
-- 默认静态配置：`10.0.2.15/24`，网关 `10.0.2.2`；可在终端 `net` 查看
-  驱动型号、MAC、链路、IP、收发计数。
-- 浏览器与在线更新仍使用固件 `EFI_HTTP_PROTOCOL`（含 TLS），内核 TCP/IP 栈不在本版本范围。
-- QEMU 实测：Intel e1000/82574L 与 virtio-net（legacy）完成 ARP/ICMP 与 ping；
-  RTL8139 驱动已实现，当前测试环境未完成收包验证。
+- 自研 TCP/IP 栈（`src/netstack.rs`）：
+  - **DHCP**：DISCOVER → OFFER → REQUEST → ACK，动态获取地址、网关与 DNS；
+  - **DNS**：UDP 53 A 记录查询，支持域名解析；
+  - **TCP**：三次握手、数据收发、ACK/FIN 关闭；
+  - **HTTP/1.0**：`GET` 请求与响应头解析，明文 HTTP。
+- 网络配置优先 DHCP，失败后回退静态 `10.0.2.15/24`、网关 `10.0.2.2`、DNS `10.0.2.2`。
+- 终端命令：`net`（驱动与配置状态）、`dhcp`（重新获取）、`resolve <域名>`、
+  `http <URL>`（自研栈 GET）、`ping <IP>`。
+- 浏览器访问 `http://` 使用自研栈，`https://` 使用固件 `EFI_HTTP_PROTOCOL`（TLS）。
+- QEMU 实测：e1000 下完成 DHCP、DNS、TCP、HTTP 全链路；virtio-net（legacy）
+  完成 ARP/ICMP；RTL8139 驱动已实现，收包验证仍在进行。
 
 ## 音频
 
@@ -141,7 +145,7 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 | 1 | Video | 显卡探测、framebuffer、模式设置 | `video.rs` / `gfx.rs` |
 | 2 | Input | PS/2、USB HID、UEFI 指针、键盘 | `input.rs` / `ps2.rs` / `usbhid.rs` |
 | 3 | Storage | 卷、FAT16/FAT32、文件与目录 | `fs.rs` / `diskfmt.rs` |
-| 4 | Network | e1000/82574L、RTL8139、virtio-net、ARP/ICMP | `net.rs` |
+| 4 | Network | e1000/82574L、RTL8139、virtio-net、DHCP/DNS/TCP/HTTP | `net.rs` / `netstack.rs` |
 | 5 | Audio | AC'97 DMA 与 PC Speaker | `audio.rs` |
 | 6 | UI | 合成器、窗口、Dock、启动台、应用 | `ui.rs` / `apps/` |
 | 7 | Ring3 | GDT/TSS/IDT、双页表、用户程序 | `ring3.rs` |
@@ -176,7 +180,7 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 1. 固件加载 `\EFI\BOOT\BOOTX64.EFI`。
 2. 探测显卡并建立合成器；挂载卷，判定启动卷与安装介质。
 3. 若从 ISO 启动：询问安装 → 复制系统文件 → 创建 FAT16 引导分区。
-4. 否则：LOGO 淡入动画 → 预生成图标 → 探测 ACPI/网络/输入/音频 → 桌面。
+4. 否则：LOGO 缩放动画 → 预生成图标 → 探测 ACPI/网络/输入/音频 → 桌面。
 
 核心模块：
 
@@ -194,8 +198,9 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 | `src/apps/suite.rs` | 应用套件与安全中心 |
 | `src/ps2.rs` / `src/usbhid.rs` / `src/input.rs` | 输入驱动 |
 | `src/audio.rs` | AC'97 |
-| `src/anim.rs` | LOGO 淡入动画 |
-| `src/http.rs` / `src/updater.rs` | 固件 HTTP、在线更新 |
+| `src/anim.rs` | LOGO 缩放淡入动画 |
+| `src/netstack.rs` | DHCP、DNS、TCP、HTTP 协议栈 |
+| `src/http.rs` / `src/updater.rs` | 固件 HTTPS、在线更新 |
 
 ## 文件系统与数据
 
@@ -259,15 +264,16 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 
 | 按键 | 作用 |
 |---|---|
-| `F1` | 启动台 |
-| `F2` | 天气 |
-| `F3` | 设置 |
-| `F4` | 应用商店 |
-| `F5` | 关于本机 |
-| `F6` / `F8` | 文件 |
-| `F7` | 终端 |
-| `F12` | 截屏 |
-| `Esc` | 关闭当前窗口 / 启动台 |
+| `Super` / `0` | 打开或关闭启动台 |
+| `W` | 打开终端（桌面状态） |
+| `Tab` | 在窗口之间切换 |
+| `F10` / `Menu` | 桌面上下文菜单（数字 `1`–`5` 选择） |
+| `F11` | 最大化 / 还原当前窗口 |
+| `F2` | 截屏 |
+| `F4` | 关闭当前窗口 |
+| `Esc` | 关闭菜单 / 启动台 |
+
+鼠标：拖动标题栏移动窗口；右上角按钮依次为最小化、最大化、关闭；桌面右键打开菜单。
 
 设置内：`←` / `→` 切页，`C` 检查更新，`D` 下载安装。
 安装程序：`Enter` 安装，`N` / `Esc` 取消。
@@ -343,30 +349,12 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|
 | ![信息](docs/screenshots/app-messages.png) |
 
-截图由 QEMU 11.1.3 运行 HYWOS 1.1.0 生成，通过 VNC 抓取 framebuffer 原始画面，未做修图。
-
-## 版本历史
-
-| 版本 | 主题 | 发布 |
-|---|---|---|
-| 1.1.3 | 宏内核子系统与统一内核 API | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.3) |
-| 1.1.2 | Ring3 用户态与双页表 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.2) |
-| 1.1.1 | 自研网卡驱动与 ARP/ICMP | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.1) |
-| 1.1.0 | 全应用可用、安全中心、LOGO 淡入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.1.0) |
-| 1.0.8 | 高分辨率显示、PS/2 重写、USB HID | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.8) |
-| 1.0.7 | 安装检测、安装流程、在线更新 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.7) |
-| 1.0.6 | 安装进度条 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.6) |
-| 1.0.5 | 硬盘检测、4Kn | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.5) |
-| 1.0.4 | ISO 安装介质、FAT16 引导 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.4) |
-| 1.0.3 | 粒子动画、现代输入 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.3) |
-| 1.0.2 | 显卡/PS2/声卡驱动 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.2) |
-| 1.0.1 | 中文界面与 UI 重绘 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.1) |
-| 1.0.0 | 首个版本 | [Release](https://github.com/lmxdg/HYWOS/releases/tag/v1.0.0) |
+截图由 QEMU 运行 HYWOS 生成，通过 VNC 抓取 framebuffer 原始画面，未做修图。
 
 ## 现实边界
 
-- 网络：自研驱动提供二层收发与 ARP/ICMP；内核仍不含 TCP/UDP 传输层，
-  浏览器与在线更新依赖固件 `EFI_HTTP_PROTOCOL`（含 TLS）。
+- 网络：自研栈支持 DHCP、DNS、TCP 与明文 HTTP；HTTPS/TLS 仍由固件 HTTP 提供。
+  暂不含 IPv6、TCP 重传与拥塞控制。
 - 邮件、信息：本地记录与撰写，不连接 SMTP/短信网关。
 - 视频：播放 BMP 序列，不含 H.264/H.265 解码。
 - 相机：采集当前合成画面，不含 USB 摄像头驱动。

@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.3 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.4 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -102,7 +102,10 @@ impl Terminal {
                 self.print("uname date ps uptime whoami");
                 self.print("weather     天气摘要");
                 self.print("kernel      宏内核子系统状态");
-                self.print("net         网卡驱动与链路状态");
+                self.print("net         网卡驱动、DHCP/IP/DNS 状态");
+                self.print("dhcp        重新获取 DHCP 地址");
+                self.print("resolve <域名>  DNS A 记录查询");
+                self.print("http <URL>  自研 TCP/IP 栈 HTTP GET");
                 self.print("ring3       运行 Ring3 用户态程序（双页表）");
                 self.print("ring3f      Ring3 页表隔离测试");
                 self.print("ping <IP>   ARP/ICMP 连通性测试");
@@ -209,7 +212,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.3 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.4 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -252,6 +255,51 @@ impl Terminal {
                     i += 1;
                 }
             }
+            "dhcp" => {
+                if crate::netstack::dhcp() {
+                    self.print("DHCP 已获取地址");
+                } else {
+                    self.print("DHCP 超时，保留静态配置");
+                }
+            }
+            "resolve" => {
+                if na < 2 {
+                    self.print("用法: resolve <域名>");
+                } else if let Some(ip) = crate::netstack::dns_resolve(args[1]) {
+                    let mut b = [0u8; 32];
+                    let l = crate::net::fmt_ip(&mut b, ip);
+                    self.print(core::str::from_utf8_unchecked(&b[..l]));
+                } else {
+                    self.print("DNS 解析失败");
+                }
+            }
+            "http" => {
+                if na < 2 {
+                    self.print("用法: http <URL>，例如 http://10.0.2.2/");
+                } else {
+                    let mut buf = [0u8; 1024];
+                    if let Some(n) = crate::netstack::http_get(args[1], &mut buf) {
+                        self.print("HTTP 响应正文：");
+                        let mut off = 0;
+                        let mut rows = 0;
+                        while off < n && rows < 12 {
+                            let mut line = [0u8; 92];
+                            let mut l = 0;
+                            while off < n && buf[off] != b'\n' && l < 90 {
+                                let c = buf[off];
+                                line[l] = if c == b'\r' { b' ' } else { c };
+                                l += 1;
+                                off += 1;
+                            }
+                            if off < n && buf[off] == b'\n' { off += 1; }
+                            self.print(core::str::from_utf8_unchecked(&line[..l]));
+                            rows += 1;
+                        }
+                    } else {
+                        self.print("HTTP 请求失败（检查 DNS/TCP）");
+                    }
+                }
+            }
             "net" => {
                 let n = crate::kernel::net_info();
                 self.print(if n.present { "自研网卡驱动" } else { "未绑定自研驱动" });
@@ -267,19 +315,35 @@ impl Terminal {
                     for c in " 链路 ".bytes() { line[ll] = c; ll += 1; }
                     for c in (if n.link { "已连接" } else { "断开" }).bytes() { line[ll] = c; ll += 1; }
                     self.print(core::str::from_utf8_unchecked(&line[..ll]));
-                    let mut b2 = [0u8; 48];
-                    let l1 = crate::net::fmt_ip(&mut b2, n.ip);
-                    let mut line2 = [0u8; 96];
+                    let _ = crate::netstack::ensure();
+                    let c = crate::netstack::cfg();
+                    let mut b2 = [0u8; 64];
+                    let l1 = crate::net::fmt_ip(&mut b2, c.ip);
+                    let mut bm = [0u8; 32];
+                    let lm = crate::net::fmt_ip(&mut bm, c.mask);
+                    let mut line2 = [0u8; 110];
                     let mut k = 0;
-                    for c in "IP ".bytes() { line2[k] = c; k += 1; }
+                    for cc in "IP ".bytes() { line2[k] = cc; k += 1; }
                     let mut i = 0;
                     while i < l1 { line2[k] = b2[i]; k += 1; i += 1; }
-                    for c in "  网关 ".bytes() { line2[k] = c; k += 1; }
+                    line2[k] = b'/'; k += 1;
+                    i = 0;
+                    while i < lm { line2[k] = bm[i]; k += 1; i += 1; }
+                    for cc in "  网关 ".bytes() { line2[k] = cc; k += 1; }
                     let mut b3 = [0u8; 24];
-                    let l2 = crate::net::fmt_ip(&mut b3, n.gw);
+                    let l2 = crate::net::fmt_ip(&mut b3, c.gw);
                     i = 0;
                     while i < l2 { line2[k] = b3[i]; k += 1; i += 1; }
                     self.print(core::str::from_utf8_unchecked(&line2[..k]));
+                    let mut bd = [0u8; 24];
+                    let ld = crate::net::fmt_ip(&mut bd, c.dns);
+                    let mut line5 = [0u8; 80];
+                    let mut kd = 0;
+                    for cc in "DNS ".bytes() { line5[kd] = cc; kd += 1; }
+                    i = 0;
+                    while i < ld { line5[kd] = bd[i]; kd += 1; i += 1; }
+                    for cc in (if c.dhcp { "  DHCP" } else { "  静态配置" }).bytes() { line5[kd] = cc; kd += 1; }
+                    self.print(core::str::from_utf8_unchecked(&line5[..kd]));
                     let mut line3 = [0u8; 64];
                     let mut k2 = 0;
                     for c in "收包 ".bytes() { line3[k2] = c; k2 += 1; }
@@ -653,18 +717,17 @@ pub unsafe fn draw(st: &mut AppState, id: AppId, g: &Gfx, x: i32, y: i32, w: i32
     g.round_rect(x, y, w, th, 18, rgb(238, 242, 251), 255);
     g.rect(x, y + th - 14, w, 14, rgb(238, 242, 251), 255);
     g.rect(x + 1, y + th - 2, w - 2, 1, rgb(210, 218, 232), 220);
-    if focus {
-        g.circle(x + 20, y + 20, 7, rgb(255, 95, 86), 255);
-        g.circle(x + 42, y + 20, 7, rgb(255, 189, 46), 255);
-        g.circle(x + 64, y + 20, 7, rgb(39, 201, 63), 255);
-    } else {
-        g.circle(x + 20, y + 20, 6, rgb(198, 204, 216), 255);
-        g.circle(x + 42, y + 20, 6, rgb(206, 212, 224), 255);
-        g.circle(x + 64, y + 20, 6, rgb(214, 220, 232), 255);
-    }
+    let bcol = if focus { rgb(64, 72, 90) } else { rgb(150, 158, 174) };
+    let hov = if focus { rgb(236, 240, 248) } else { rgb(198, 204, 216) };
+    g.circle(x + w - 82, y + 20, 10, hov, 255);
+    g.line(x + w - 88, y + 21, x + w - 76, y + 21, bcol, 255);
+    g.circle(x + w - 56, y + 20, 10, hov, 255);
+    g.round_rect_outline(x + w - 61, y + 16, 10, 9, 2, bcol, 255);
+    g.circle(x + w - 30, y + 20, 10, hov, 255);
+    g.line(x + w - 35, y + 15, x + w - 25, y + 25, bcol, 255);
+    g.line(x + w - 25, y + 15, x + w - 35, y + 25, bcol, 255);
+    g.rect(x + w - 100, y + 10, 1, th - 20, rgb(210, 218, 232), 160);
     g.text_center(x + w / 2, y + 13, id.name(), rgb(44, 50, 66), 1);
-    g.rect(x + w - 96, y + 8, 1, th - 16, rgb(210, 218, 232), 160);
-    g.circle(x + w - 30, y + 20, 5, rgb(190, 198, 212), 200);
     st.tick += 1;
     match id {
         AppId::Terminal => draw_term(&mut st.term, g, x, y, w, h),
@@ -827,7 +890,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.3 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.4 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -987,11 +1050,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "星河版 · 版本 1.1.3", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "宏内核桌面版 · 版本 1.1.4", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.3（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.4（Rust no_std UEFI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1064,8 +1127,8 @@ fn draw_generic(g: &Gfx, id: AppId, x: i32, y: i32, w: i32, h: i32) {
 pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i32, w: i32, h: i32) -> AppAction {
     let lx = mx - x;
     let ly = my - y;
-    if ly < HEADER_H && lx > 10 && lx < 66 {
-        return AppAction::Close;
+    if ly < HEADER_H {
+        return AppAction::None;
     }
     match id {
         AppId::Settings => {
@@ -1279,7 +1342,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.3");
+            set_update_msg(s, true, "已是最新版本 1.1.4");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

@@ -3,7 +3,7 @@ use crate::logo::LOGO_RGBA;
 
 const FRAMES_TOTAL: u32 = 72;
 const LOGO_W: usize = 176;
-const STAR_N: usize = 380;
+const STAR_N: usize = 130;
 
 static mut LOGO_BIG: [u32; LOGO_W * LOGO_W] = [0; LOGO_W * LOGO_W];
 
@@ -66,20 +66,6 @@ impl BootAnim {
         self.frame
     }
 
-    fn bg_at(&self, y: i32) -> u32 {
-        let t = ((y.max(0) as u32) * 255 / self.h.max(1) as u32) as u32;
-        lerp(self.top, self.bot, t)
-    }
-
-    fn wipe(&self, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
-        let mut yy = 0;
-        while yy < h {
-            let c = self.bg_at(y + yy);
-            g.rect(x, y + yy, w, 1, c, 255);
-            yy += 1;
-        }
-    }
-
     pub fn step(&mut self, g: &Gfx) -> bool {
         self.frame += 1;
         let f = self.frame;
@@ -96,14 +82,18 @@ impl BootAnim {
             ((FRAMES_TOTAL - f) as u32 * 255 / (FRAMES_TOTAL - 52)) as u8
         };
         let cx = self.w / 2;
-        let top = self.h / 2 - LOGO_W as i32 / 2 - 20;
-        let lx = cx - LOGO_W as i32 / 2;
+        let grow = if f <= 34 { f } else { 34 };
+        let sz = (104 + (LOGO_W as u32 - 104) * grow / 34) as i32;
+        let top = self.h / 2 - sz / 2 - 24;
+        let lx = cx - sz / 2;
         let big = unsafe { &*core::ptr::addr_of!(LOGO_BIG) };
         let mut y = 0i32;
-        while y < LOGO_W as i32 {
+        while y < sz {
+            let sy = (y as usize) * LOGO_W / sz as usize;
             let mut x = 0i32;
-            while x < LOGO_W as i32 {
-                let p = big[(y as usize) * LOGO_W + x as usize];
+            while x < sz {
+                let sx = (x as usize) * LOGO_W / sz as usize;
+                let p = big[sy * LOGO_W + sx];
                 let sa = ((p >> 24) & 0xff) as u32;
                 if sa > 0 {
                     let a = (sa * alpha as u32 / 255) as u8;
@@ -118,8 +108,7 @@ impl BootAnim {
 
         let title = "HYWOS";
         let tw = text_width(title, 3);
-        let ty = top + LOGO_W as i32 + 26;
-        self.wipe(g, cx - tw / 2 - 8, ty - 6, tw + 16, 44);
+        let ty = top + sz + 26;
         g.text_a(cx - tw / 2, ty, title, rgb(236, 246, 255), 3, alpha);
 
         self.frame >= FRAMES_TOTAL

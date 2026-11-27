@@ -30,10 +30,16 @@ pub const DOCK_APPS: [AppId; 19] = [
 pub struct Win {
     pub id: AppId,
     pub open: bool,
+    pub min: bool,
+    pub max: bool,
     pub x: i32,
     pub y: i32,
     pub w: i32,
     pub h: i32,
+    pub rx: i32,
+    pub ry: i32,
+    pub rw: i32,
+    pub rh: i32,
     pub app: AppState,
 }
 
@@ -58,6 +64,12 @@ pub struct Ui {
     pub frame: u32,
     pub hover: i32,
     pub shot_flash: i32,
+    pub drag: i32,
+    pub drag_dx: i32,
+    pub drag_dy: i32,
+    pub menu: bool,
+    pub menu_x: i32,
+    pub menu_y: i32,
 }
 
 impl Ui {
@@ -82,6 +94,12 @@ impl Ui {
             frame: 0,
             hover: -1,
             shot_flash: 0,
+            drag: -1,
+            drag_dx: 0,
+            drag_dy: 0,
+            menu: false,
+            menu_x: 0,
+            menu_y: 0,
         };
         ui.wallpaper();
         ui.snapshot_bg();
@@ -141,30 +159,29 @@ impl Ui {
         let g = &self.g;
         let w = self.w();
         let h = self.h();
-        g.vgrad(0, 0, w, h, rgb(9, 13, 30), rgb(6, 5, 14));
-        g.circle(w * 3 / 4, h / 4, 360, rgb(44, 96, 190), 34);
-        g.circle(w / 5, h * 3 / 4, 320, rgb(138, 60, 150), 24);
-        g.circle(w * 2 / 3, h * 2 / 3, 400, rgb(26, 54, 120), 16);
+        g.vgrad(0, 0, w, h, rgb(10, 15, 28), rgb(4, 6, 12));
+        let cx = w * 3 / 4;
+        let cy = h * 2 / 5;
+        g.ring(cx, cy, 250, 1, rgb(74, 140, 214), 44);
+        g.ring(cx, cy, 360, 1, rgb(58, 108, 170), 26);
+        g.ring(cx, cy, 470, 1, rgb(46, 84, 136), 16);
+        g.circle(w / 6, h * 4 / 5, 250, rgb(38, 88, 168), 12);
+        g.circle(w / 6, h * 4 / 5, 170, rgb(52, 114, 206), 10);
+        g.circle(w * 5 / 6, h * 4 / 5, 210, rgb(26, 64, 124), 10);
+        let tw = text_width("HYWOS", 6);
+        g.text_a(w / 2 - tw / 2, h / 2 - 44, "HYWOS", rgb(118, 168, 238), 6, 14);
+        let sw = text_width("自研 64 位 UEFI 系统", 2);
+        g.text_a(w / 2 - sw / 2, h / 2 + 26, "自研 64 位 UEFI 系统", rgb(96, 132, 190), 2, 34);
         let mut seed = 0x2545f491u32;
         let mut i = 0;
-        while i < 110 {
+        while i < 60 {
             seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
             let x = (seed % w as u32) as i32;
             seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-            let y = (seed % (h as u32 / 2)) as i32;
-            let b = ((seed >> 8) % 60) as u8 + 90;
-            g.put(x, y, rgb(b, b, (b as u32 + 40).min(255) as u8), 120);
+            let y = (seed % h as u32) as i32;
+            let b = ((seed >> 8) % 50) as u8 + 70;
+            g.put(x, y, rgb(b, b, (b as u32 + 50).min(255) as u8), 90);
             i += 1;
-        }
-        let mut x = 0;
-        while x < w {
-            g.rect(x, 0, 1, h, rgb(255, 255, 255), 3);
-            x += 64;
-        }
-        let mut y = 0;
-        while y < h {
-            g.rect(0, y, w, 1, rgb(255, 255, 255), 2);
-            y += 64;
         }
     }
 
@@ -292,8 +309,8 @@ impl Ui {
         g.rect(0, 30, w, 1, rgb(255, 255, 255), 16);
         g.circle(18, 15, 7, rgb(110, 200, 255), 255);
         g.circle(18, 15, 3, rgb(230, 246, 255), 255);
-        g.text(32, 7, "HYWOS 1.1.3", rgb(232, 242, 255), 1);
-        g.text(32 + text_width("HYWOS 1.1.3", 1) + 10, 7, "星河", rgb(146, 198, 255), 1);
+        g.text(32, 7, "HYWOS 1.1.4", rgb(232, 242, 255), 1);
+        g.text(32 + text_width("HYWOS 1.1.4", 1) + 10, 7, "宏内核", rgb(146, 198, 255), 1);
         let c = hw::cpu();
         let mut b = [0u8; 64];
         let mut l = 0;
@@ -318,23 +335,25 @@ impl Ui {
         } else {
             g.text(w - 300, 7, "网络：未发现网卡", rgb(150, 132, 142), 1);
         }
-        let mut tb = [0u8; 16];
+        let mut tb = [0u8; 24];
         let mut tl = 0;
         match hw::cached_time() {
-            Some(t) => {
-                if t.hour > 23 || t.minute > 59 || t.month == 0 {
-                    for ch in b"--:--".iter() { tb[tl] = *ch; tl += 1; }
-                } else {
-                    tl += hw::num2(&mut tb[tl..], t.hour as u32, 2);
-                    tb[tl] = b':'; tl += 1;
-                    tl += hw::num2(&mut tb[tl..], t.minute as u32, 2);
+            Some(t) if t.hour <= 23 && t.minute <= 59 => {
+                if t.month >= 1 && t.month <= 12 && t.day >= 1 && t.day <= 31 {
+                    tl += hw::num2(&mut tb[tl..], t.month as u32, 2);
+                    tb[tl] = b'-'; tl += 1;
+                    tl += hw::num2(&mut tb[tl..], t.day as u32, 2);
+                    tb[tl] = b' '; tl += 1;
                 }
+                tl += hw::num2(&mut tb[tl..], t.hour as u32, 2);
+                tb[tl] = b':'; tl += 1;
+                tl += hw::num2(&mut tb[tl..], t.minute as u32, 2);
             }
-            None => {
+            _ => {
                 for ch in b"--:--".iter() { tb[tl] = *ch; tl += 1; }
             }
         }
-        g.text(w - 112, 7, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
+        g.text_center(w / 2, 7, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
         g.round_rect(w - 64, 10, 22, 11, 3, rgb(120, 160, 200), 200);
         g.rect(w - 41, 13, 2, 5, rgb(120, 160, 200), 200);
         g.rect(w - 62, 12, 14, 7, rgb(110, 220, 150), 240);
@@ -347,7 +366,7 @@ impl Ui {
 
     unsafe fn draw_window(&self, i: usize, focus: bool) {
         let wins = &mut *core::ptr::addr_of_mut!(WINS);
-        if !wins[i].open { return; }
+        if !wins[i].open || wins[i].min { return; }
         apps::draw(&mut wins[i].app, wins[i].id, &self.g, wins[i].x, wins[i].y, wins[i].w, wins[i].h, focus);
     }
 
@@ -503,10 +522,32 @@ impl Ui {
             FOCUS = slot;
         } else {
             FOCUS = found;
+            wins[found].min = false;
         }
         self.launchpad = false;
         self.lp_t = 0;
         self.search_len = 0;
+    }
+
+    unsafe fn toggle_max(&self, idx: usize) {
+        let wins = &mut *core::ptr::addr_of_mut!(WINS);
+        if wins[idx].max {
+            wins[idx].x = wins[idx].rx;
+            wins[idx].y = wins[idx].ry;
+            wins[idx].w = wins[idx].rw;
+            wins[idx].h = wins[idx].rh;
+            wins[idx].max = false;
+        } else {
+            wins[idx].rx = wins[idx].x;
+            wins[idx].ry = wins[idx].y;
+            wins[idx].rw = wins[idx].w;
+            wins[idx].rh = wins[idx].h;
+            wins[idx].x = 0;
+            wins[idx].y = 30;
+            wins[idx].w = self.w();
+            wins[idx].h = self.h() - 110;
+            wins[idx].max = true;
+        }
     }
 
     unsafe fn close_window(&mut self, idx: usize) {
@@ -574,6 +615,25 @@ impl Ui {
         let h = self.h();
         self.input.poll(w, h);
         let mut action = AppAction::None;
+        if self.drag >= 0 {
+            if self.input.down {
+                let wins = &mut *core::ptr::addr_of_mut!(WINS);
+                let idx = self.drag as usize;
+                if idx < 3 && wins[idx].open {
+                    let mut nx = self.input.x - self.drag_dx;
+                    let mut ny = self.input.y - self.drag_dy;
+                    if nx < 40 - wins[idx].w { nx = 40 - wins[idx].w; }
+                    if nx > w - 80 { nx = w - 80; }
+                    if ny < 30 { ny = 30; }
+                    if ny > h - 120 { ny = h - 120; }
+                    wins[idx].x = nx;
+                    wins[idx].y = ny;
+                    wins[idx].max = false;
+                }
+            } else {
+                self.drag = -1;
+            }
+        }
 
         if self.launchpad {
             if self.lp_t < 16 { self.lp_t += 1; }
@@ -604,8 +664,46 @@ impl Ui {
                     self.search_len = 0;
                 }
             }
+        } else if self.menu {
+            if self.input.clicked || self.input.right_clicked {
+                if self.input.clicked {
+                    let mut pick = 255u8;
+                    let rel = self.input.y - self.menu_y - 8;
+                    if rel >= 0 {
+                        let i = rel / 32;
+                        if i < 5 && self.input.x > self.menu_x + 6 && self.input.x < self.menu_x + 196 {
+                            pick = i as u8;
+                        }
+                    }
+                    self.menu = false;
+                    match pick {
+                        0 => { self.open_app(AppId::Terminal); }
+                        1 => { self.open_app(AppId::Files); }
+                        2 => { self.open_app(AppId::Settings); }
+                        3 => { self.open_app(AppId::About); }
+                        4 => { action = AppAction::Screenshot; }
+                        _ => {}
+                    }
+                } else {
+                    self.menu = false;
+                }
+            }
         } else {
             self.hover = self.dock_slot_at(self.input.x, self.input.y);
+            if self.input.right_clicked {
+                if self.hit_window(self.input.x, self.input.y).is_none()
+                    && self.input.y >= 30 && self.input.y < h - 100
+                    && self.input.x >= 0 && self.input.x < w
+                {
+                    let mut mx = self.input.x;
+                    let mut my = self.input.y;
+                    if mx > w - 200 { mx = w - 200; }
+                    if my > h - 196 { my = h - 196; }
+                    self.menu = true;
+                    self.menu_x = mx;
+                    self.menu_y = my;
+                }
+            }
             if self.input.clicked {
                 if self.input.y < 28 {
                 } else if self.input.y > h - 90 {
@@ -620,38 +718,111 @@ impl Ui {
                 } else if let Some(idx) = self.hit_window(self.input.x, self.input.y) {
                     FOCUS = idx;
                     let wins = &mut *core::ptr::addr_of_mut!(WINS);
-                    action = apps::click(&mut wins[idx].app, wins[idx].id, self.input.x, self.input.y, wins[idx].x, wins[idx].y, wins[idx].w, wins[idx].h);
+                    let wx = wins[idx].x;
+                    let wy = wins[idx].y;
+                    let ww = wins[idx].w;
+                    if self.input.y < wy + apps::HEADER_H {
+                        if self.input.x > wx + ww - 44 && self.input.x < wx + ww - 16 {
+                            action = AppAction::Close;
+                        } else if self.input.x > wx + ww - 70 && self.input.x < wx + ww - 42 {
+                            self.toggle_max(idx);
+                        } else if self.input.x > wx + ww - 96 && self.input.x < wx + ww - 68 {
+                            wins[idx].min = true;
+                            let mut last = usize::MAX;
+                            let mut k = 0;
+                            while k < 3 {
+                                if wins[k].open && !wins[k].min { last = k; }
+                                k += 1;
+                            }
+                            FOCUS = if last != usize::MAX { last } else { 0 };
+                        } else {
+                            self.drag = idx as i32;
+                            self.drag_dx = self.input.x - wx;
+                            self.drag_dy = self.input.y - wy;
+                        }
+                    } else {
+                        action = apps::click(&mut wins[idx].app, wins[idx].id, self.input.x, self.input.y, wx, wy, ww, wins[idx].h);
+                    }
                 } else {
                     self.hover = -1;
                 }
             }
         }
 
+        let mut open_any = false;
+        {
+            let wins = &*core::ptr::addr_of!(WINS);
+            let mut i = 0;
+            while i < 3 {
+                if wins[i].open && !wins[i].min { open_any = true; }
+                i += 1;
+            }
+        }
+        let desktop = !open_any && !self.launchpad;
         while let Some((scan, ch)) = read_key() {
-            if scan == 0x0b {
+            if scan == 0x5b {
+                self.launchpad = !self.launchpad;
+                self.lp_t = 0;
+                self.search_len = 0;
+                self.menu = false;
+                continue;
+            }
+            if desktop && scan == 0x0b {
                 self.launchpad = true;
                 self.lp_t = 16;
                 self.search_len = 0;
                 continue;
             }
-            if scan == 0x0c { self.open_app(AppId::Weather); continue; }
-            if scan == 0x0d {
-                self.open_app(AppId::Settings);
-                let wins = &mut *core::ptr::addr_of_mut!(WINS);
-                wins[FOCUS].app.settings.page = 1;
-                continue;
-            }
-            if scan == 0x0e { self.open_app(AppId::Store); continue; }
-            if scan == 0x0f { self.open_app(AppId::About); continue; }
-            if scan == 0x10 { self.open_app(AppId::Files); continue; }
-            if scan == 0x11 { self.open_app(AppId::Terminal); continue; }
-            if scan == 0x12 { self.open_app(AppId::Files); continue; }
-            if scan == 0x16 || scan == 0x1d {
+            if desktop && scan == 0x11 { self.open_app(AppId::Terminal); continue; }
+            if desktop && scan == 0x3c {
                 action = AppAction::Screenshot;
                 continue;
             }
+            if scan == 0x3e {
+                action = AppAction::Close;
+                continue;
+            }
+            if !desktop && scan == 0x0f {
+                let wins = &*core::ptr::addr_of!(WINS);
+                let mut nxt = FOCUS;
+                let mut k = 0;
+                while k < 3 {
+                    let cand = (FOCUS + k + 1) % 3;
+                    if wins[cand].open && !wins[cand].min { nxt = cand; break; }
+                    k += 1;
+                }
+                FOCUS = nxt;
+                continue;
+            }
+            if scan == 0x44 || scan == 0x5d {
+                self.menu = true;
+                self.menu_x = self.w() / 2 - 95;
+                self.menu_y = self.h() / 2 - 90;
+                continue;
+            }
+            if scan == 0x57 && !desktop {
+                self.toggle_max(FOCUS);
+                continue;
+            }
+            if self.menu && scan == 0x01 {
+                self.menu = false;
+                continue;
+            }
+            if self.menu && ch >= '1' as u16 && ch <= '5' as u16 {
+                let pick = (ch - '1' as u16) as u8;
+                self.menu = false;
+                match pick {
+                    0 => { self.open_app(AppId::Terminal); }
+                    1 => { self.open_app(AppId::Files); }
+                    2 => { self.open_app(AppId::Settings); }
+                    3 => { self.open_app(AppId::About); }
+                    4 => { action = AppAction::Screenshot; }
+                    _ => {}
+                }
+                continue;
+            }
             if self.launchpad {
-                if scan == 0x17 {
+                if scan == 0x01 {
                     self.launchpad = false;
                     self.lp_t = 0;
                     self.search_len = 0;
@@ -666,10 +837,6 @@ impl Ui {
                     self.search_len += 1;
                 }
             } else {
-                if scan == 0x17 {
-                    action = AppAction::Close;
-                    continue;
-                }
                 let wins = &mut *core::ptr::addr_of_mut!(WINS);
                 let mut fi = usize::MAX;
                 let mut i = 0;
@@ -717,7 +884,9 @@ impl Ui {
 
     unsafe fn draw(&self) {
         self.restore_bg();
-        let focus = FOCUS;
+        let wins = &*core::ptr::addr_of!(WINS);
+        let mut focus = FOCUS;
+        if focus >= 3 || !wins[focus].open || wins[focus].min { focus = usize::MAX; }
         let mut i = 0;
         while i < 3 {
             if i != focus { self.draw_window(i, false); }
@@ -728,8 +897,32 @@ impl Ui {
             self.draw_dock();
         }
         self.draw_status();
+        if self.menu {
+            self.draw_menu();
+        }
         if self.launchpad {
             self.draw_launchpad();
+        }
+    }
+
+    unsafe fn draw_menu(&self) {
+        let g = &self.g;
+        let x = self.menu_x;
+        let y = self.menu_y;
+        let items = ["打开终端", "文件管理器", "系统设置", "关于 HYWOS", "截取屏幕"];
+        let iw = 190i32;
+        let ih = 8 + 5 * 32 + 6;
+        g.round_rect(x + 3, y + 3, iw, ih, 10, 0x000000, 70);
+        g.round_rect(x, y, iw, ih, 10, rgb(22, 26, 38), 246);
+        g.round_rect_outline(x, y, iw, ih, 10, rgb(255, 255, 255), 40);
+        let mut i = 0;
+        while i < 5 {
+            let iy = y + 8 + i * 32;
+            if self.input.x > x && self.input.x < x + iw && self.input.y >= iy && self.input.y < iy + 30 {
+                g.round_rect(x + 6, iy, iw - 12, 30, 7, rgb(64, 120, 210), 150);
+            }
+            g.text(x + 18, iy + 8, items[i as usize], rgb(230, 238, 250), 1);
+            i += 1;
         }
     }
 }

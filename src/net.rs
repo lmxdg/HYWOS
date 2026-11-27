@@ -36,6 +36,12 @@ static mut NIC: Nic = Nic {
     arp_mac: [0; 6],
 };
 
+pub unsafe fn set_ip(ip: [u8; 4], gw: [u8; 4]) {
+    let n = &mut *core::ptr::addr_of_mut!(NIC);
+    n.ip = ip;
+    n.gw = gw;
+}
+
 pub fn info() -> &'static Nic {
     unsafe { &*core::ptr::addr_of!(NIC) }
 }

@@ -1,30 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#101e42"/>
-      <stop offset="1" stop-color="#04060f"/>
+      <stop offset="0" stop-color="#0d1628"/>
+      <stop offset="1" stop-color="#060a14"/>
     </linearGradient>
-    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#5ec8ff" stop-opacity="0.55"/>
-      <stop offset="0.45" stop-color="#2e6ce2" stop-opacity="0.18"/>
-      <stop offset="1" stop-color="#2e6ce2" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
   </defs>
-  <rect width="1024" height="1024" rx="225" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="400" fill="url(#halo)"/>
-  <g fill="none" stroke-linecap="round">
-    <ellipse cx="512" cy="512" rx="368" ry="154" stroke="#6eceff" stroke-width="9" transform="rotate(-18 512 512)"/>
-    <ellipse cx="512" cy="512" rx="317" ry="225" stroke="#a88cff" stroke-width="6" transform="rotate(24 512 512)"/>
-    <ellipse cx="512" cy="512" rx="440" ry="92" stroke="#ff82c4" stroke-width="4" transform="rotate(-46 512 512)"/>
+  <rect width="1024" height="1024" rx="235" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="353" fill="none" stroke="#3a6094" stroke-opacity="0.59" stroke-width="4.6"/>
+  <g fill="#f2f7ff">
+    <rect x="378" y="328" width="64" height="368" rx="32"/>
+    <rect x="582" y="328" width="64" height="368" rx="32"/>
+    <rect x="378" y="480" width="268" height="64" rx="32"/>
   </g>
-  <circle cx="512" cy="512" r="150" fill="#78c8ff" opacity="0.35" filter="url(#soft)"/>
-  <g fill="#f5faff">
-    <rect x="477" y="410" width="33" height="204" rx="16"/>
-    <rect x="514" y="410" width="33" height="204" rx="16"/>
-    <rect x="477" y="495" width="70" height="30" rx="15"/>
-  </g>
-  <g fill="#ffffff">
-    <circle cx="858" cy="360" r="9"/><circle cx="208" cy="702" r="7"/><circle cx="720" cy="760" r="5"/>
-  </g>
+  <circle cx="725" cy="394" r="17" fill="#4cc2ff"/>
 </svg>

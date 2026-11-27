@@ -323,6 +323,79 @@ pub fn con_print(s: &str) {
     }
 }
 
+fn scan_from_ascii(c: u16) -> u16 {
+    match c {
+        8 => 0x0e,
+        9 => 0x0f,
+        13 => 0x1c,
+        27 => 0x01,
+        32 => 0x39,
+        49 => 0x02,
+        50 => 0x03,
+        51 => 0x04,
+        52 => 0x05,
+        53 => 0x06,
+        54 => 0x07,
+        55 => 0x08,
+        56 => 0x09,
+        57 => 0x0a,
+        48 => 0x0b,
+        65 => 0x1e,
+        66 => 0x30,
+        67 => 0x2e,
+        68 => 0x20,
+        69 => 0x12,
+        70 => 0x21,
+        71 => 0x22,
+        72 => 0x23,
+        73 => 0x17,
+        74 => 0x24,
+        75 => 0x25,
+        76 => 0x26,
+        77 => 0x32,
+        78 => 0x31,
+        79 => 0x18,
+        80 => 0x19,
+        81 => 0x10,
+        82 => 0x13,
+        83 => 0x1f,
+        84 => 0x14,
+        85 => 0x16,
+        86 => 0x2f,
+        87 => 0x11,
+        88 => 0x2d,
+        89 => 0x15,
+        90 => 0x2c,
+        97 => 0x1e,
+        98 => 0x30,
+        99 => 0x2e,
+        100 => 0x20,
+        101 => 0x12,
+        102 => 0x21,
+        103 => 0x22,
+        104 => 0x23,
+        105 => 0x17,
+        106 => 0x24,
+        107 => 0x25,
+        108 => 0x26,
+        109 => 0x32,
+        110 => 0x31,
+        111 => 0x18,
+        112 => 0x19,
+        113 => 0x10,
+        114 => 0x13,
+        115 => 0x1f,
+        116 => 0x14,
+        117 => 0x16,
+        118 => 0x2f,
+        119 => 0x11,
+        120 => 0x2d,
+        121 => 0x15,
+        122 => 0x2c,
+        _ => 0,
+    }
+}
+
 pub fn read_key() -> Option<(u16, u16)> {
     unsafe { crate::ps2::poll(); }
     let mut conin_err = false;
@@ -337,10 +410,11 @@ pub fn read_key() -> Option<(u16, u16)> {
             let mut k = InputKey { scan_code: 0, unicode_char: 0 };
             let s = f(st.con_in, &mut k);
             if s == EFI_SUCCESS {
+                let sc = if k.scan_code == 0 { scan_from_ascii(k.unicode_char) } else { k.scan_code };
                 serial_print("[key] conin");
-                serial_u32(k.scan_code as u32);
+                serial_u32(sc as u32);
                 serial_u32(k.unicode_char as u32);
-                return Some((k.scan_code, k.unicode_char));
+                return Some((sc, k.unicode_char));
             }
             if s != EFI_NOT_READY {
                 conin_err = true;
@@ -355,10 +429,11 @@ pub fn read_key() -> Option<(u16, u16)> {
             return Some(k);
         }
         if let Some(k) = crate::input::read_key_ex() {
+            let sc = if k.0 == 0 { scan_from_ascii(k.1) } else { k.0 };
             serial_print("[key] ex");
-            serial_u32(k.0 as u32);
+            serial_u32(sc as u32);
             serial_u32(k.1 as u32);
-            return Some(k);
+            return Some((sc, k.1));
         }
         if conin_err {
             crate::ps2::keyboard_takeover();

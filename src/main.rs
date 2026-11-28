@@ -45,7 +45,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.2.0 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
+        debug_print("HYWOS 1.2.1 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -103,6 +103,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         debug_print("[stage] icon preload done");
 
         hw::acpi_probe();
+        hw::pci_probe();
         debug_print("[stage] acpi done");
         hw::net_probe();
         if net::init() {

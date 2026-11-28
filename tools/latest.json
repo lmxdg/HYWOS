@@ -1,11 +1,11 @@
 [
   {
-    "tag_name": "v1.2.0",
-    "name": "HYWOS 1.2.0 «桌面全能版»",
+    "tag_name": "v1.2.1",
+    "name": "HYWOS 1.2.1 «安装与硬件版»",
     "assets": [
       {
-        "name": "hywos-1.2.0.updpkg",
-        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.2.0/hywos-1.2.0.updpkg"
+        "name": "hywos-1.2.1.updpkg",
+        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.2.1/hywos-1.2.1.updpkg"
       }
     ]
   }

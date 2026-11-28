@@ -707,3 +707,80 @@ unsafe fn cmos_time() -> Option<EfiTime> {
         pad1: 0, nanosecond: 0, timezone: 0, daylight: 0, pad2: 0,
     })
 }
+
+#[derive(Clone, Copy)]
+pub struct PciInfo {
+    pub total: u32,
+    pub xhci: u32,
+    pub uhci: u32,
+    pub ehci: u32,
+    pub pcie: u32,
+    pub nvme: u32,
+    pub sata: u32,
+    pub vga: u32,
+}
+
+static mut PCI: PciInfo = PciInfo { total: 0, xhci: 0, uhci: 0, ehci: 0, pcie: 0, nvme: 0, sata: 0, vga: 0 };
+
+pub fn pci() -> &'static PciInfo {
+    unsafe { &PCI }
+}
+
+pub fn smp() -> (usize, usize) {
+    unsafe { (CPU.total, CPU.enabled) }
+}
+
+unsafe fn pci_cfg(bus: u32, dev: u32, func: u32, off: u32) -> u32 {
+    let addr = 0x8000_0000u32 | (bus << 16) | (dev << 11) | (func << 8) | (off & 0xfc);
+    crate::port::outl(0xCF8, addr);
+    crate::port::inl(0xCFC)
+}
+
+pub unsafe fn pci_probe() {
+    PCI = PciInfo { total: 0, xhci: 0, uhci: 0, ehci: 0, pcie: 0, nvme: 0, sata: 0, vga: 0 };
+    let mut bus = 0u32;
+    while bus < 256 {
+        let mut dev = 0u32;
+        while dev < 32 {
+            let mut func = 0u32;
+            while func < 8 {
+                let id = pci_cfg(bus, dev, func, 0);
+                if id == 0xFFFF_FFFF {
+                    if func == 0 { break; }
+                } else {
+                    PCI.total += 1;
+                    let c = pci_cfg(bus, dev, func, 8);
+                    let class = ((c >> 24) & 0xff) as u8;
+                    let sub = ((c >> 16) & 0xff) as u8;
+                    let prog = ((c >> 8) & 0xff) as u8;
+                    if class == 0x0c && sub == 0x03 {
+                        if prog == 0x30 { PCI.xhci += 1; }
+                        else if prog == 0x20 { PCI.ehci += 1; }
+                        else { PCI.uhci += 1; }
+                    } else if class == 0x06 && sub == 0x04 {
+                        PCI.pcie += 1;
+                    } else if class == 0x01 && sub == 0x08 && prog == 0x02 {
+                        PCI.nvme += 1;
+                    } else if class == 0x01 && sub == 0x06 {
+                        PCI.sata += 1;
+                    } else if class == 0x03 {
+                        PCI.vga += 1;
+                    }
+                    if func == 0 {
+                        let hdr = pci_cfg(bus, dev, 0, 0x0c);
+                        if hdr & 0x0080_0000 == 0 { break; }
+                    }
+                }
+                func += 1;
+            }
+            dev += 1;
+        }
+        bus += 1;
+    }
+    serial_print("[pci] devices");
+    serial_u32(PCI.total);
+    serial_print("[pci] xhci/uhci/ehci");
+    serial_u32(PCI.xhci);
+    serial_u32(PCI.uhci);
+    serial_u32(PCI.ehci);
+}

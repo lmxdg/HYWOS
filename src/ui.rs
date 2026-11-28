@@ -544,7 +544,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.0", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.1", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {

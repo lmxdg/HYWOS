@@ -34,6 +34,7 @@ static mut CLUSBUF: Align4K = Align4K([0; 4096]);
 static mut IOBLK: Align4K = Align4K([0; 4096]);
 static mut CHUNK: Align64K = Align64K([0; 65536]);
 
+#[derive(Clone, Copy)]
 pub struct Target {
     pub bio: *mut BlockIo,
     pub blocks: u64,
@@ -173,7 +174,10 @@ pub unsafe fn pick_target() -> Option<Target> {
         }
         i += 1;
     }
-    let mut t = best?;
+    finalize(best?)
+}
+
+unsafe fn finalize(mut t: Target) -> Option<Target> {
     let per = (t.bs / 512) as u64;
     let mut secs = t.blocks.saturating_sub(PART_START);
     if secs > MAX_PART {
@@ -189,6 +193,69 @@ pub unsafe fn pick_target() -> Option<Target> {
     }
     t.part_secs = secs;
     Some(t)
+}
+
+pub unsafe fn targets(out: &mut [Target; 4]) -> usize {
+    DIAG_N = 0;
+    let mut buf: *mut Handle = core::ptr::null_mut();
+    let mut n: usize = 0;
+    if !status_ok(bs_locate_handle_buffer(&GUID_BLOCK_IO, &mut n, &mut buf)) || buf.is_null() {
+        return 0;
+    }
+    let mut count = 0usize;
+    let mut i = 0;
+    while i < n {
+        let mut b: *mut BlockIo = core::ptr::null_mut();
+        if status_ok(bs_handle_protocol(
+            *buf.add(i),
+            &GUID_BLOCK_IO,
+            &mut b as *mut *mut BlockIo as *mut *mut c_void,
+        )) && !b.is_null()
+        {
+            let reset: extern "efiapi" fn(*mut BlockIo, u8) -> Status =
+                core::mem::transmute((*b).reset);
+            let _ = reset(b, 0);
+            let m = (*b).media;
+            if !m.is_null() {
+                let bs = (*m).block_size;
+                let last = (*m).last_block;
+                let cap512 = if bs == 0 { 0 } else { last * bs as u64 / 512 };
+                let mb = cap512 * 512 / (1024 * 1024);
+                if DIAG_N < 12 {
+                    DIAG[DIAG_N] = BlkDiag {
+                        mb,
+                        bs,
+                        ro: (*m).read_only,
+                        removable: (*m).removable,
+                        logical: (*m).logical_partition,
+                        present: (*m).present,
+                    };
+                    DIAG_N += 1;
+                }
+                let supported = bs == 512 || bs == 4096;
+                if (*m).present == 1
+                    && (*m).read_only == 0
+                    && supported
+                    && cap512 >= MIN_CAP_512
+                    && (*m).logical_partition == 0
+                    && count < 4
+                {
+                    if let Some(t) = finalize(Target {
+                        bio: b,
+                        blocks: cap512,
+                        media_id: (*m).media_id,
+                        part_secs: 0,
+                        bs,
+                    }) {
+                        out[count] = t;
+                        count += 1;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    count
 }
 
 fn put16(buf: *mut u8, off: usize, v: u16) {

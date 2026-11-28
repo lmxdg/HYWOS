@@ -36,7 +36,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.2.0 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.2.1 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -214,7 +214,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.2.0 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.2.1 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -234,6 +234,43 @@ impl Terminal {
                     if e > i { self.print(&r[i..e]); }
                     i = e + 1;
                 }
+            }
+            "sysdiag" => {
+                self.print("HYWOS 1.2.1 · MEMZ-LMXDG 系统诊断");
+                self.print(if crate::hw::cpu().acpi_ok { "ACPI: MADT 已解析" } else { "ACPI: 未找到" });
+                self.print(if crate::power::acpi_ready() { "FADT: 已找到（软关机可用）" } else { "FADT: 未找到" });
+                let (ct, ce) = crate::hw::smp();
+                let mut b = [0u8; 72];
+                let mut l = 0usize;
+                for c in "CPU 逻辑核心 ".bytes() { b[l] = c; l += 1; }
+                l += hw::num2(&mut b[l..], ct as u32, 1);
+                b[l] = b'/'; l += 1;
+                l += hw::num2(&mut b[l..], ce as u32, 1);
+                self.print(core::str::from_utf8_unchecked(&b[..l]));
+                let p = crate::hw::pci();
+                let mut d = [0u8; 110];
+                let mut k = 0usize;
+                for c in "PCI 总数 ".bytes() { d[k] = c; k += 1; }
+                k += hw::num2(&mut d[k..], p.total, 1);
+                for c in " · xHCI ".bytes() { d[k] = c; k += 1; }
+                k += hw::num2(&mut d[k..], p.xhci, 1);
+                for c in " · UHCI ".bytes() { d[k] = c; k += 1; }
+                k += hw::num2(&mut d[k..], p.uhci, 1);
+                for c in " · EHCI ".bytes() { d[k] = c; k += 1; }
+                k += hw::num2(&mut d[k..], p.ehci, 1);
+                for c in " · PCIe ".bytes() { d[k] = c; k += 1; }
+                k += hw::num2(&mut d[k..], p.pcie, 1);
+                self.print(core::str::from_utf8_unchecked(&d[..k]));
+                let mut e = [0u8; 80];
+                let mut m = 0usize;
+                for c in "NVMe ".bytes() { e[m] = c; m += 1; }
+                m += hw::num2(&mut e[m..], p.nvme, 1);
+                for c in " · SATA ".bytes() { e[m] = c; m += 1; }
+                m += hw::num2(&mut e[m..], p.sata, 1);
+                for c in " · VGA ".bytes() { e[m] = c; m += 1; }
+                m += hw::num2(&mut e[m..], p.vga, 1);
+                self.print(core::str::from_utf8_unchecked(&e[..m]));
+                self.print(if crate::net::info().present { "网络: 已连接（net / ping 命令）" } else { "网络: 未连接" });
             }
             "kernel" => {
                 self.print("HYWOS 混合内核（Hybrid）· C/C++ 内核核心 + Rust UI");
@@ -992,7 +1029,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.2.0 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.2.1 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1214,11 +1251,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.0", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.1", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.2.0（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.2.1（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1262,7 +1299,7 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.text(vx, ry, "Ring0 内核 · Ring3 用户态 · 双页表", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "授权", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "MIT License", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "MEMZ-LMXDG · MIT", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "源码", rgb(68, 78, 98), 1);
     g.text(vx, ry, "github.com/lmxdg/HYWOS", rgb(68, 78, 98), 1);
@@ -1663,7 +1700,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.2.0");
+            set_update_msg(s, true, "已是最新版本 1.2.1");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

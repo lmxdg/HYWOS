@@ -1637,8 +1637,8 @@ unsafe fn seed_home() {
     let seeds = [
         ("\\home\\user\\Notes\\welcome.txt", "欢迎使用 HYWOS 备忘录\nCtrl+S 保存，Enter 换行。\n"),
         ("\\home\\user\\Contacts\\contacts.txt", "HYWOS 支持|10086|support@hywos.local\n"),
-        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.4 信息|--:--\n"),
-        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.4|--:--\n"),
+        ("\\home\\user\\Messages\\threads.txt", "系统|欢迎使用 HYWOS 1.1.5 信息|--:--\n"),
+        ("\\home\\user\\Mail\\inbox.txt", "HYWOS 团队|欢迎使用 1.1.5|--:--\n"),
     ];
     let mut i = 0;
     while i < seeds.len() {

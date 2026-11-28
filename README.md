@@ -67,9 +67,10 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 | 通讯录 | 联系人浏览与新增 | `\home\user\Contacts` |
 | 信息 | 本地消息记录与发送 | `\home\user\Messages` |
 | 安全中心 | 实时监控、快速/全盘查杀、病毒库 | `\HYWOS\SECURITY` |
-| 天气 | 5 城市离线 5 日预报（启动台） | 内置 |
+| 天气 | 5 城市离线 5 日预报（开始菜单） | 内置 |
 
-Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
+桌面采用 Windows 风格：底部全宽任务栏固定 6 个常用应用，开始菜单展示全部 20 个应用；
+桌面左上角提供「此电脑 / 终端 / 浏览器 / 安全中心」图标，双击打开。
 应用首次打开时会自动创建缺失目录与示例记录。
 
 ## 安全中心
@@ -87,7 +88,7 @@ Dock 为 **19 个应用 + 启动台**，启动台展示全部 20 个应用。
 
 - 显卡探测顺序：virtio-gpu（legacy 2D）→ VMware SVGA II → VBE → UEFI GOP。
 - SVGA 读取 `MAX_WIDTH/MAX_HEIGHT` 选择安全模式，并校验 32bpp。
-- 软件合成器支持到 **1920×1080**；1024×768 与 1280×800 均完整显示状态栏与 Dock。
+- 软件合成器支持到 **1920×1080**；1024×768 与 1280×800 均完整显示任务栏与开始菜单。
 - 启动动画：新 LOGO 由小到大缓入，`HYWOS` 字标同步淡入，约 2.4 秒。
 
 ## 输入
@@ -147,7 +148,7 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 | 3 | Storage | 卷、FAT16/FAT32、文件与目录 | `fs.rs` / `diskfmt.rs` |
 | 4 | Network | e1000/82574L、RTL8139、virtio-net、DHCP/DNS/TCP/HTTP | `net.rs` / `netstack.rs` |
 | 5 | Audio | AC'97 DMA 与 PC Speaker | `audio.rs` |
-| 6 | UI | 合成器、窗口、Dock、启动台、应用 | `ui.rs` / `apps/` |
+| 6 | UI | 合成器、窗口、任务栏、开始菜单、桌面图标 | `ui.rs` / `apps/` |
 | 7 | Ring3 | GDT/TSS/IDT、双页表、用户程序 | `ring3.rs` |
 | 8 | Updates | `.updpkg`、GitHub Releases、离线回退 | `updater.rs` / `http.rs` |
 
@@ -193,7 +194,7 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 | `src/gfx.rs` | 32bpp 合成、UTF-8 混排、圆角/渐变/位图 |
 | `src/cjk.rs` | GB2312 点阵字库（6786 字） |
 | `src/fs.rs` / `src/diskfmt.rs` | 文件系统、FAT16 安装、BMP 截屏、更新包 |
-| `src/ui.rs` | 窗口栈、Dock、启动台、合成与截屏 |
+| `src/ui.rs` | 窗口栈、任务栏、开始菜单、桌面图标、合成与截屏 |
 | `src/apps/mod.rs` | 终端、文件、设置、商店、天气、关于 |
 | `src/apps/suite.rs` | 应用套件与安全中心 |
 | `src/ps2.rs` / `src/usbhid.rs` / `src/input.rs` | 输入驱动 |
@@ -258,26 +259,28 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 - 轻量应用：在 `src/apps/suite.rs` 增加 `draw/click/key` 分支与状态字段。
 - 复杂应用：在 `src/apps/mod.rs` 注册独立 `AppState` 与绘制函数。
 - 持久化：使用 `fs::read_file/write_file/list_dir`，数据放在用户卷。
-- 窗口尺寸：`apps::app_size`；Dock 由 `ui.rs::DOCK_APPS` 驱动。
+- 窗口尺寸：`apps::app_size`；任务栏固定项由 `ui.rs::TB_APPS` 驱动。
 
 ## 快捷键
 
 | 按键 | 作用 |
 |---|---|
-| `Super` / `0` | 打开或关闭启动台 |
+| `Super` / `0` | 打开或关闭开始菜单 |
 | `W` | 打开终端（桌面状态） |
+| `↑` / `↓` | 选择桌面图标，`Enter` 打开 |
 | `Tab` | 在窗口之间切换 |
 | `F10` / `Menu` | 桌面上下文菜单（数字 `1`–`5` 选择） |
 | `F11` | 最大化 / 还原当前窗口 |
 | `F2` | 截屏 |
 | `F4` | 关闭当前窗口 |
-| `Esc` | 关闭菜单 / 启动台 |
+| `Esc` | 关闭菜单 / 开始菜单 |
 
-鼠标：拖动标题栏移动窗口；右上角按钮依次为最小化、最大化、关闭；桌面右键打开菜单。
+鼠标：拖动标题栏移动窗口；右上角按钮依次为最小化、最大化、关闭；
+点击任务栏图标切换应用，右下角竖条显示桌面；桌面右键打开菜单，双击图标启动应用。
 
 设置内：`←` / `→` 切页，`C` 检查更新，`D` 下载安装。
 安装程序：`Enter` 安装，`N` / `Esc` 取消。
-启动台：直接键入过滤中英文名称或应用 ID，`Enter` 启动第一项。
+开始菜单：直接键入过滤中英文名称或应用 ID，`Enter` 启动第一项。
 
 ## 界面截图
 
@@ -289,9 +292,9 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|---|
 | ![进度](docs/screenshots/progress.png) | ![完成](docs/screenshots/install-done.png) |
 
-| 桌面 | 启动台 |
+| 桌面（Windows 风格） | 开始菜单 |
 |---|---|
-| ![桌面](docs/screenshots/desktop.png) | ![启动台](docs/screenshots/launchpad.png) |
+| ![桌面](docs/screenshots/desktop.png) | ![开始菜单](docs/screenshots/launchpad.png) |
 
 | 设置 · 权限 | 设置 · 软件更新 |
 |---|---|

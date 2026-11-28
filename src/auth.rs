@@ -148,7 +148,7 @@ unsafe fn draw_lock(g: &Gfx, input: &[u8], err: bool, frame: u32) {
         ("输入密码后按 Enter 解锁", rgb(150, 168, 196))
     };
     g.text_center(w / 2, by + 68, msg, col, 1);
-    g.text_center(w / 2, h - 46, "HYWOS 1.2.5 · 锁屏", rgb(90, 104, 130), 1);
+    g.text_center(w / 2, h - 46, "HYWOS 1.2.6 · 锁屏", rgb(90, 104, 130), 1);
 }
 
 /// 启动时若已设置密码，阻塞等待用户输入正确密码。

@@ -165,7 +165,7 @@ impl AiState {
         push_s(&mut body, &mut bl, b"{\"model\":\"");
         for i in 0..self.model_len { push_b(&mut body, &mut bl, self.model[i]); }
         push_s(&mut body, &mut bl, b"\",\"messages\":[{\"role\":\"system\",\"content\":\"");
-        let sys = "你是 HYWOS 1.2.5 的 AI 助手，开发方 MEMZ-LMXDG。系统为 C/C++ 混合内核 + Rust UI。可用动作：[[OPEN:terminal]] [[OPEN:settings]] [[OPEN:files]] [[OPEN:office]] [[BRIGHTNESS:0-100]] [[VOLUME:0-100]] [[WALLPAPER:0-4]] [[SCALE:100|125|150]] [[SHUTDOWN]] [[REBOOT]]。请用中文简洁回答，需要操作系统时在末尾单独输出动作标记。";
+        let sys = "你是 HYWOS 1.2.6 的 AI 助手，开发方 MEMZ-LMXDG。系统为 C/C++ 混合内核 + Rust UI。可用动作：[[OPEN:terminal]] [[OPEN:settings]] [[OPEN:files]] [[OPEN:office]] [[BRIGHTNESS:0-100]] [[VOLUME:0-100]] [[WALLPAPER:0-4]] [[SCALE:100|125|150]] [[SHUTDOWN]] [[REBOOT]]。请用中文简洁回答，需要操作系统时在末尾单独输出动作标记。";
         json_escape(sys.as_bytes(), &mut body, &mut bl);
         push_s(&mut body, &mut bl, b"\"},{\"role\":\"user\",\"content\":\"");
         json_escape(&self.input[..self.input_len], &mut body, &mut bl);

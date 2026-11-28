@@ -633,7 +633,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.5", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.6", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -977,7 +977,13 @@ impl Ui {
                 }
             }
             if self.input.clicked {
-                if self.input.y < TB_H {
+                let cc_inside = if self.control_center { self.cc_click() } else { false };
+                if self.control_center && !cc_inside && self.tb_slot_at(self.input.x, self.input.y) != -4 {
+                    self.control_center = false;
+                }
+                if cc_inside {
+                    // 控制中心按钮已消费本次点击
+                } else if self.input.y < TB_H {
                     self.click_taskbar(&mut action);
                 } else if let Some(di) = self.desk_icon_at(self.input.x, self.input.y) {
                     self.desk_sel = di as i32;

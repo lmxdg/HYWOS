@@ -5,6 +5,7 @@ use crate::hw;
 use crate::icon::{icon, AppId};
 
 pub mod suite;
+pub mod office;
 
 pub const HEADER_H: i32 = 40;
 
@@ -15,6 +16,7 @@ pub enum AppAction {
     Screenshot,
     OpenUpdate,
     OpenApp(AppId),
+    SetWallpaper(u8),
 }
 
 pub struct Terminal {
@@ -34,7 +36,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.7 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.8 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -212,7 +214,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.7 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.8 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -614,11 +616,16 @@ pub struct AppState {
     pub files_click: usize,
     pub tick: u32,
     pub suite: suite::Suite,
+    pub office: office::OfficeState,
 }
 
 pub unsafe fn init_state(st: &mut AppState, id: AppId) {
     st.tick = 0;
     st.suite.init(id);
+    st.office = office::OfficeState::empty();
+    if id == AppId::Office {
+        st.office.scan();
+    }
     st.files_sel = 0;
     st.files_click = 0;
     st.files_cwd = Str80::empty();
@@ -686,6 +693,7 @@ pub fn app_size(id: AppId) -> (i32, i32) {
         AppId::Contacts => (680, 480),
         AppId::Messages => (680, 480),
         AppId::Mail => (680, 480),
+        AppId::Office => (880, 580),
         _ => (640, 420),
     }
 }
@@ -784,6 +792,7 @@ pub unsafe fn draw(st: &mut AppState, id: AppId, g: &Gfx, x: i32, y: i32, w: i32
         AppId::Terminal => draw_term(&mut st.term, g, x, y, w, h),
         AppId::Files => draw_files(st, g, x, y, w, h),
         AppId::Settings => draw_settings(&mut st.settings, g, x, y, w, h),
+        AppId::Office => office::draw(&mut st.office, g, x, y, w, h),
         AppId::Weather => draw_weather(&mut st.weather, g, x, y, w, h),
         AppId::Store => draw_store(&mut st.store, g, x, y, w, h),
         AppId::About => draw_about(g, x, y, w, h),
@@ -880,6 +889,33 @@ fn draw_files(st: &mut AppState, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.text(lx, y + h - 26, "双击 .updpkg 可打开软件更新", rgb(136, 146, 168), 1);
 }
 
+fn wall_thumb(g: &Gfx, x: i32, y: i32, idx: usize) {
+    let w = 86;
+    let h = 52;
+    match idx % 5 {
+        1 => {
+            g.vgrad(x, y, w, h, rgb(8, 40, 48), rgb(30, 10, 46));
+            g.rect(x, y + h / 2, w, 2, rgb(70, 220, 170), 120);
+        }
+        2 => {
+            g.vgrad(x, y, w, h, rgb(24, 46, 86), rgb(96, 140, 184));
+            g.tri(x, y + h, x + w / 2, y + 16, x + w, y + h, rgb(40, 70, 110), 255);
+        }
+        3 => {
+            g.vgrad(x, y, w, h, rgb(6, 36, 74), rgb(24, 128, 168));
+            g.rect(x, y + h / 2, w, 2, rgb(120, 200, 240), 90);
+        }
+        4 => {
+            g.vgrad(x, y, w, h, rgb(84, 32, 44), rgb(18, 8, 22));
+            g.circle(x + w / 2, y + h * 2 / 3, 10, rgb(250, 150, 70), 220);
+        }
+        _ => {
+            g.vgrad(x, y, w, h, rgb(10, 15, 28), rgb(4, 6, 12));
+            g.ring(x + w * 3 / 4, y + h / 2, 14, 1, rgb(74, 140, 214), 120);
+        }
+    }
+}
+
 unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     let top = y + HEADER_H + 8;
     let side = 190;
@@ -916,6 +952,21 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
                 let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
                 g.text(cx, cy + 226, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
+            g.text(cx, cy + 240, "桌面壁纸", rgb(36, 42, 58), 1);
+            let names = ["深空", "极光", "山脉", "海洋", "日落"];
+            let cur = crate::ui::wallpaper_index();
+            let mut i = 0;
+            while i < 5 {
+                let bx = cx + i as i32 * 100;
+                let by = cy + 266;
+                if i == cur {
+                    g.round_rect(bx - 3, by - 3, 92, 58, 6, rgb(60, 116, 240), 220);
+                }
+                wall_thumb(g, bx, by, i);
+                g.text_center(bx + 43, by + 60, names[i], rgb(50, 56, 72), 1);
+                i += 1;
+            }
+            g.text(cx, cy + 352, "单击缩略图或按 1-5 切换壁纸", rgb(140, 148, 168), 1);
         }
         1 => {
             g.text(cx, cy, "应用权限", rgb(36, 42, 58), 2);
@@ -941,7 +992,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.7 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.8 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1132,11 +1183,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.7", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.8", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.7（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.8（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1213,6 +1264,10 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
         return AppAction::None;
     }
     match id {
+        AppId::Office => {
+            office::click(&mut st.office, mx, my, x, y);
+            return AppAction::None;
+        }
         AppId::Settings => {
             let top = HEADER_H + 8;
             let side = 190;
@@ -1224,7 +1279,17 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             if st.settings.page == 0 {
                 let bx = w - side - 40 - 40;
                 if ly > top + 140 && ly < top + 190 && lx > side + 26 && lx < side + 26 + 190 {
+                    let _ = bx;
                     return AppAction::Screenshot;
+                }
+                let wy = top + 272;
+                let wx = side + 26;
+                if ly > wy && ly < wy + 58 && lx > wx && lx < wx + 500 {
+                    let rel = lx - wx;
+                    let i = (rel / 100) as u8;
+                    if i < 5 && rel % 100 < 92 {
+                        return AppAction::SetWallpaper(i);
+                    }
                 }
             } else if st.settings.page == 1 {
                 let cx = side + 26;
@@ -1402,6 +1467,10 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
     if id == AppId::Terminal {
         return st.term.key(scan, ch);
     }
+    if id == AppId::Office {
+        office::key(&mut st.office, scan, ch);
+        return AppAction::None;
+    }
     if suite::key(&mut st.suite, id, scan, ch) {
         return AppAction::None;
     }
@@ -1475,6 +1544,9 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
                 return AppAction::None;
             }
         }
+        if st.settings.page == 0 && ch >= b'1' as u16 && ch <= b'5' as u16 {
+            return AppAction::SetWallpaper((ch - b'1' as u16) as u8);
+        }
         if scan == 0x04 && st.settings.page > 0 {
             st.settings.page -= 1;
             return AppAction::None;
@@ -1518,7 +1590,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.7");
+            set_update_msg(s, true, "已是最新版本 1.1.8");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

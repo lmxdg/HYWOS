@@ -8,7 +8,7 @@
   <b>开源 · MIT · x86_64 · UEFI + BIOS</b>
 </p>
 
-HYWOS 1.1.7 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系统，支持
+HYWOS 1.1.8 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系统，支持
 **UEFI 与 BIOS 双引导**。内核核心、子系统注册表与混合驱动总线由 C/C++ 实现，
 界面、合成器、窗口与应用仍由 Rust 编写；不链接任何第三方 crate，自带显卡、
 输入、音频驱动、桌面环境、应用套件与安全中心，可制作启动 U 盘或 ISO 安装到本地磁盘。
@@ -71,9 +71,10 @@ HYWOS 1.1.7 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系�
 | 信息 | 本地消息记录与发送 | `\home\user\Messages` |
 | 安全中心 | 实时监控、快速/全盘查杀、病毒库 | `\HYWOS\SECURITY` |
 | 天气 | 5 城市离线 5 日预报（开始菜单） | 内置 |
+| HYWOffice | 打开 txt/doc/docx/ppt/pptx 文本预览 | `\home\user\Documents` |
 
 桌面采用 Windows 风格：**顶部全宽任务栏**包含系统 LOGO 开始按钮、搜索框与
-6 个固定应用，开始菜单展示全部 20 个应用；
+6 个固定应用，开始菜单展示全部 21 个应用；
 任务栏下方左侧提供「此电脑 / 终端 / 浏览器 / 安全中心」图标，双击打开。
 应用首次打开时会自动创建缺失目录与示例记录。
 
@@ -86,6 +87,18 @@ HYWOS 1.1.7 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系�
 | 账户设置 | 启动锁屏 |
 |---|---|
 | ![账户](docs/screenshots/account.png) | ![锁屏](docs/screenshots/lock-screen.png) |
+
+## HYWOffice 与壁纸
+
+- **HYWOffice**：开始菜单应用，支持 `txt`、`doc`、`docx`、`ppt`、`pptx` 文本预览。
+  docx/pptx 通过 ZIP + DEFLATE + XML 提取正文；doc/ppt 为二进制兼容提取。
+  不保留原始排版、图片与表格结构。
+- **5 张内置壁纸**：深空、极光、山脉、海洋、日落；设置 → 显示 → 桌面壁纸，
+  单击缩略图或按 `1`–`5` 切换，选择保存到 `\home\user\.apps\wallpaper.kv`。
+
+| HYWOffice | 壁纸切换 |
+|---|---|
+| ![Office](docs/screenshots/office.png) | ![壁纸](docs/screenshots/wallpaper.png) |
 
 ## 安全中心
 
@@ -152,7 +165,7 @@ HYWOS 1.1.7 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系�
 
 ## 混合内核（Hybrid）
 
-HYWOS 1.1.7 采用混合内核架构：
+HYWOS 1.1.8 采用混合内核架构：
 
 - **C/C++ 内核核心**（`kernel/`）：子系统注册表、状态机、内核能力位、运行计数、
   自检与驱动总线。所有导出函数使用 `ms_abi`，Rust 以 `extern "efiapi"` 调用。

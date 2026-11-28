@@ -43,7 +43,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.7 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
+        debug_print("HYWOS 1.1.8 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();

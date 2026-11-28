@@ -127,6 +127,7 @@ impl Ui {
             last_click_idx: -1,
             all_min: false,
         };
+        load_wallpaper();
         ui.wallpaper();
         ui.snapshot_bg();
         ui.present();
@@ -182,33 +183,14 @@ impl Ui {
     fn h(&self) -> i32 { self.g.h as i32 }
 
     fn wallpaper(&self) {
-        let g = &self.g;
-        let w = self.w();
-        let h = self.h();
-        g.vgrad(0, 0, w, h, rgb(10, 15, 28), rgb(4, 6, 12));
-        let cx = w * 3 / 4;
-        let cy = h * 2 / 5;
-        g.ring(cx, cy, 250, 1, rgb(74, 140, 214), 44);
-        g.ring(cx, cy, 360, 1, rgb(58, 108, 170), 26);
-        g.ring(cx, cy, 470, 1, rgb(46, 84, 136), 16);
-        g.circle(w / 6, h * 4 / 5, 250, rgb(38, 88, 168), 12);
-        g.circle(w / 6, h * 4 / 5, 170, rgb(52, 114, 206), 10);
-        g.circle(w * 5 / 6, h * 4 / 5, 210, rgb(26, 64, 124), 10);
-        let tw = text_width("HYWOS", 6);
-        g.text_a(w / 2 - tw / 2, h / 2 - 44, "HYWOS", rgb(118, 168, 238), 6, 14);
-        let sw = text_width("自研 64 位 UEFI 系统", 2);
-        g.text_a(w / 2 - sw / 2, h / 2 + 26, "自研 64 位 UEFI 系统", rgb(96, 132, 190), 2, 34);
-        let mut seed = 0x2545f491u32;
-        let mut i = 0;
-        while i < 60 {
-            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-            let x = (seed % w as u32) as i32;
-            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-            let y = (seed % h as u32) as i32;
-            let b = ((seed >> 8) % 50) as u8 + 70;
-            g.put(x, y, rgb(b, b, (b as u32 + 50).min(255) as u8), 90);
-            i += 1;
-        }
+        wall_paint(&self.g, unsafe { WALLPAPER });
+    }
+
+    pub unsafe fn set_wallpaper(&mut self, idx: usize) {
+        WALLPAPER = idx % 5;
+        save_wallpaper(WALLPAPER);
+        self.wallpaper();
+        self.snapshot_bg();
     }
 
     unsafe fn snapshot_bg(&mut self) {
@@ -454,11 +436,11 @@ impl Ui {
         }
     }
 
-    fn filtered(&self) -> ([AppId; 20], usize) {
-        let mut out = [AppId::Terminal; 20];
+    fn filtered(&self) -> ([AppId; 21], usize) {
+        let mut out = [AppId::Terminal; 21];
         let mut n = 0;
         let mut i = 0;
-        while i < 20 {
+        while i < 21 {
             let a = AppId::from_index(i);
             if self.matches(a) { out[n] = a; n += 1; }
             i += 1;
@@ -562,7 +544,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.1.7", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.1.8", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -1077,6 +1059,7 @@ impl Ui {
                 let wins = &mut *core::ptr::addr_of_mut!(WINS);
                 wins[FOCUS].app.settings.page = 2;
             }
+            AppAction::SetWallpaper(i) => self.set_wallpaper(i as usize),
             _ => {}
         }
 
@@ -1129,6 +1112,116 @@ impl Ui {
             }
             g.text(x + 18, iy + 8, items[i as usize], rgb(230, 238, 250), 1);
             i += 1;
+        }
+    }
+}
+
+static mut WALLPAPER: usize = 0;
+const WALLPAPER_FILE: &str = "\\home\\user\\.apps\\wallpaper.kv";
+
+pub fn wallpaper_index() -> usize {
+    unsafe { WALLPAPER }
+}
+
+unsafe fn load_wallpaper() {
+    if let Some(n) = fs::read_file(fs::usr_vol(), WALLPAPER_FILE) {
+        let b = fs::rdbuf();
+        if n > 0 && b[0] >= b'0' && b[0] <= b'4' {
+            WALLPAPER = (b[0] - b'0') as usize;
+        }
+    }
+}
+
+unsafe fn save_wallpaper(idx: usize) {
+    let b = [b'0' + (idx % 5) as u8];
+    fs::write_file(fs::usr_vol(), WALLPAPER_FILE, &b);
+}
+
+fn stars(g: &Gfx, n: u32) {
+    let w = g.w as i32;
+    let h = g.h as i32;
+    let mut seed = 0x2545f491u32;
+    let mut i = 0;
+    while i < n {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let x = (seed % w as u32) as i32;
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let y = (seed % h as u32) as i32;
+        let b = ((seed >> 8) % 50) as u8 + 70;
+        g.put(x, y, rgb(b, b, (b as u32 + 50).min(255) as u8), 90);
+        i += 1;
+    }
+}
+
+fn wall_paint(g: &Gfx, idx: usize) {
+    let w = g.w as i32;
+    let h = g.h as i32;
+    match idx % 5 {
+        1 => {
+            g.vgrad(0, 0, w, h, rgb(8, 40, 48), rgb(30, 10, 46));
+            let mut i = 0;
+            while i < 4 {
+                let y0 = h / 5 + i * 54;
+                let mut x = 0;
+                while x < w {
+                    g.line(x, y0 + (x / 60 % 2) * 8, x + 60, y0 + 8, rgb(70, 220, 170), (55 - i * 10) as u8);
+                    x += 60;
+                }
+                i += 1;
+            }
+            stars(g, 40);
+        }
+        2 => {
+            g.vgrad(0, 0, w, h, rgb(24, 46, 86), rgb(96, 140, 184));
+            g.circle(w * 3 / 4, h / 4, 46, rgb(244, 246, 230), 210);
+            let mut layer = 0;
+            while layer < 3 {
+                let base = h * 2 / 3 + layer * 34;
+                let lv = layer as u8;
+                let col = rgb(28 + lv * 18, 52 + lv * 18, 88 + lv * 16);
+                let mut x = -160;
+                while x < w {
+                    g.tri(x, base + 90, x + 200, base - 110 + layer * 26, x + 400, base + 90, col, 255);
+                    x += 240;
+                }
+                layer += 1;
+            }
+        }
+        3 => {
+            g.vgrad(0, 0, w, h, rgb(6, 36, 74), rgb(24, 128, 168));
+            let mut y = 0;
+            while y < h {
+                g.line(0, y, w, y + 12, rgb(30, (100 + y * 90 / h) as u8, 150), 34);
+                y += 22;
+            }
+            let mut i = 0;
+            while i < 20 {
+                let x = ((i * 173 + 40) % w) as i32;
+                let yy = ((i * 97 + 30) % h) as i32;
+                g.circle(x, yy, 3 + (i % 4) * 2, rgb(120, 200, 240), 46);
+                i += 1;
+            }
+        }
+        4 => {
+            g.vgrad(0, 0, w, h, rgb(84, 32, 44), rgb(18, 8, 22));
+            g.circle(w / 2, h * 2 / 3, 96, rgb(250, 148, 66), 190);
+            g.circle(w / 2, h * 2 / 3, 72, rgb(255, 206, 120), 220);
+            g.rect(0, h * 2 / 3, w, h / 3, rgb(38, 18, 40), 130);
+            stars(g, 30);
+        }
+        _ => {
+            g.vgrad(0, 0, w, h, rgb(10, 15, 28), rgb(4, 6, 12));
+            g.ring(w * 3 / 4, h * 2 / 5, 250, 1, rgb(74, 140, 214), 44);
+            g.ring(w * 3 / 4, h * 2 / 5, 360, 1, rgb(58, 108, 170), 26);
+            g.ring(w * 3 / 4, h * 2 / 5, 470, 1, rgb(46, 84, 136), 16);
+            g.circle(w / 6, h * 4 / 5, 250, rgb(38, 88, 168), 12);
+            g.circle(w / 6, h * 4 / 5, 170, rgb(52, 114, 206), 10);
+            g.circle(w * 5 / 6, h * 4 / 5, 210, rgb(26, 64, 124), 10);
+            let tw = text_width("HYWOS", 6);
+            g.text_a(w / 2 - tw / 2, h / 2 - 44, "HYWOS", rgb(118, 168, 238), 6, 14);
+            let sw = text_width("自研 64 位 UEFI 系统", 2);
+            g.text_a(w / 2 - sw / 2, h / 2 + 26, "自研 64 位 UEFI 系统", rgb(96, 132, 190), 2, 34);
+            stars(g, 60);
         }
     }
 }

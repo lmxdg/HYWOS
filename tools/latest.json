@@ -1,11 +1,11 @@
 [
   {
-    "tag_name": "v1.1.7",
-    "name": "HYWOS 1.1.7 «混合内核 · 账户安全版»",
+    "tag_name": "v1.1.8",
+    "name": "HYWOS 1.1.8 «混合内核 · 办公与壁纸版»",
     "assets": [
       {
-        "name": "hywos-1.1.7.updpkg",
-        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.7/hywos-1.1.7.updpkg"
+        "name": "hywos-1.1.8.updpkg",
+        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.8/hywos-1.1.8.updpkg"
       }
     ]
   }

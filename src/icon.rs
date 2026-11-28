@@ -1,7 +1,7 @@
 use crate::font;
 use crate::gfx::{lerp, rgb};
 
-pub const APP_COUNT: usize = 20;
+pub const APP_COUNT: usize = 21;
 pub const ICON_SRC: usize = 256;
 pub const ICON_SIZE: usize = 64;
 pub const ICON_BYTES: usize = ICON_SIZE * ICON_SIZE * 4;
@@ -29,6 +29,7 @@ pub enum AppId {
     Weather = 17,
     Messages = 18,
     Security = 19,
+    Office = 20,
 }
 
 impl AppId {
@@ -53,7 +54,8 @@ impl AppId {
             16 => AppId::Contacts,
             17 => AppId::Weather,
             18 => AppId::Messages,
-            _ => AppId::Security,
+            19 => AppId::Security,
+            _ => AppId::Office,
         }
     }
 
@@ -79,6 +81,7 @@ impl AppId {
             AppId::Weather => "天气",
             AppId::Messages => "信息",
             AppId::Security => "安全中心",
+            AppId::Office => "HYWOffice",
         }
     }
 
@@ -104,6 +107,7 @@ impl AppId {
             AppId::Weather => "weather",
             AppId::Messages => "messages",
             AppId::Security => "security",
+            AppId::Office => "office",
         }
     }
 
@@ -129,6 +133,7 @@ impl AppId {
             AppId::Weather => (rgb(111, 182, 255), rgb(37, 104, 200)),
             AppId::Messages => (rgb(99, 224, 138), rgb(30, 158, 80)),
             AppId::Security => (rgb(86, 214, 158), rgb(16, 122, 88)),
+            AppId::Office => (rgb(92, 142, 240), rgb(34, 76, 180)),
         }
     }
 }
@@ -476,6 +481,14 @@ fn draw_symbol(cv: &Canvas, app: AppId) {
             cv.thick_line(102, 126, 122, 148, 8, rgb(22, 92, 64), 255);
             cv.thick_line(122, 148, 158, 100, 8, rgb(22, 92, 64), 255);
             cv.circle(128, 96, 9, rgb(255, 255, 255), 70);
+        }
+        AppId::Office => {
+            cv.round_rect(70, 54, 112, 150, 12, rgb(255, 255, 255), 245);
+            cv.tri_shape(146, 54, 182, 90, 146, 90, rgb(206, 222, 246), 255);
+            cv.round_rect(88, 104, 76, 10, 5, rgb(46, 108, 214), 240);
+            cv.round_rect(88, 128, 70, 8, 4, rgb(120, 140, 168), 230);
+            cv.round_rect(88, 148, 82, 8, 4, rgb(120, 140, 168), 230);
+            cv.round_rect(88, 168, 58, 8, 4, rgb(120, 140, 168), 230);
         }
     }
 }

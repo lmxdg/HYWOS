@@ -8,7 +8,7 @@ if [ ! -f "$EFI" ]; then
   exit 1
 fi
 
-VERSION=1.1.7
+VERSION=1.1.8
 
 rm -rf build
 

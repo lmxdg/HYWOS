@@ -67,6 +67,12 @@ pub struct Gfx {
     pub stride: usize,
     pub swap: bool,
     pub ok: bool,
+    pub phys_fb: *mut u32,
+    pub phys_w: usize,
+    pub phys_h: usize,
+    pub phys_stride: usize,
+    pub scale: u32,
+    pub direct: bool,
 }
 
 static mut SCR_W: i32 = 1024;
@@ -81,6 +87,93 @@ pub fn brightness() -> u8 {
     unsafe { BRIGHTNESS }
 }
 
+static mut GOP: *mut Gop = core::ptr::null_mut();
+static mut LOGICAL: [u32; 1920 * 1080] = [0; 1920 * 1080];
+
+unsafe fn make_gfx(phys_fb: *mut u32, pw: usize, ph: usize, ps: usize, swap: bool, ok: bool, scale: u32) -> Gfx {
+    SCR_W = pw as i32;
+    SCR_H = ph as i32;
+    let sc = if scale < 100 { 100 } else if scale > 150 { 150 } else { scale };
+    if sc <= 100 || pw == 0 || ph == 0 {
+        Gfx {
+            fb: phys_fb, w: pw, h: ph, stride: ps, swap, ok,
+            phys_fb, phys_w: pw, phys_h: ph, phys_stride: ps, scale: 100, direct: true,
+        }
+    } else {
+        let lw = pw * 100 / sc as usize;
+        let lh = ph * 100 / sc as usize;
+        Gfx {
+            fb: core::ptr::addr_of_mut!(LOGICAL) as *mut u32,
+            w: lw, h: lh, stride: lw, swap, ok,
+            phys_fb, phys_w: pw, phys_h: ph, phys_stride: ps, scale: sc, direct: false,
+        }
+    }
+}
+
+pub unsafe fn set_resolution(w: usize, h: usize, scale: u32) -> Option<Gfx> {
+    if GOP.is_null() {
+        return None;
+    }
+    let m0 = (*GOP).mode;
+    if m0.is_null() { return None; }
+    let max = (*m0).max_mode;
+    let mut chosen: i32 = -1;
+    let mut m = 0u32;
+    while m < max {
+        let f: extern "efiapi" fn(*mut Gop, u32, *mut *mut GopModeInfo, *mut usize) -> Status =
+            core::mem::transmute((*GOP).query_mode);
+        let mut info: *mut GopModeInfo = core::ptr::null_mut();
+        let mut sz: usize = 0;
+        if f(GOP, m, &mut info, &mut sz) == EFI_SUCCESS && !info.is_null() {
+            let pf = (*info).pixel_format;
+            if (pf == 0 || pf == 1) && (*info).hres as usize == w && (*info).vres as usize == h {
+                chosen = m as i32;
+                break;
+            }
+        }
+        m += 1;
+    }
+    if chosen < 0 {
+        return None;
+    }
+    let f: extern "efiapi" fn(*mut Gop, u32) -> Status = core::mem::transmute((*GOP).set_mode);
+    if !status_ok(f(GOP, chosen as u32)) {
+        return None;
+    }
+    let mode = (*GOP).mode;
+    if mode.is_null() || (*mode).info.is_null() {
+        return None;
+    }
+    let info = (*mode).info;
+    let pw = (*info).hres as usize;
+    let ph = (*info).vres as usize;
+    let raw = (*info).pixels_per_scanline as usize;
+    let ps = if raw < pw || raw > 16384 { pw } else { raw };
+    let pf = (*info).pixel_format;
+    let fb = (*mode).fb_base as *mut u32;
+    Some(make_gfx(fb, pw, ph, ps, pf == 0, !fb.is_null() && pw > 0 && ph > 0, scale))
+}
+
+pub unsafe fn rescale(g: &Gfx, scale: u32) -> Gfx {
+    make_gfx(g.phys_fb, g.phys_w, g.phys_h, g.phys_stride, g.swap, g.ok, scale)
+}
+
+pub unsafe fn apply_display(g: Gfx) -> Gfx {
+    let w = crate::display::width() as usize;
+    let h = crate::display::height() as usize;
+    let sc = crate::display::scale();
+    let mut ng = g;
+    if w != ng.phys_w || h != ng.phys_h {
+        if let Some(n) = set_resolution(w, h, sc) {
+            ng = n;
+        }
+    }
+    if sc != ng.scale {
+        ng = rescale(&ng, sc);
+    }
+    ng
+}
+
 impl Gfx {
     pub fn screen_w() -> i32 {
         unsafe { SCR_W }
@@ -90,18 +183,43 @@ impl Gfx {
         unsafe { SCR_H }
     }
     pub fn empty() -> Gfx {
-        Gfx { fb: core::ptr::null_mut(), w: 0, h: 0, stride: 0, swap: false, ok: false }
+        Gfx {
+            fb: core::ptr::null_mut(), w: 0, h: 0, stride: 0, swap: false, ok: false,
+            phys_fb: core::ptr::null_mut(), phys_w: 0, phys_h: 0, phys_stride: 0,
+            scale: 100, direct: true,
+        }
     }
 
     pub unsafe fn from_device(fb: *mut u32, w: usize, h: usize, stride: usize, swap: bool, ok: bool) -> Gfx {
         SCR_W = w as i32;
         SCR_H = h as i32;
-        Gfx { fb, w, h, stride, swap, ok }
+        Gfx {
+            fb, w, h, stride, swap, ok,
+            phys_fb: fb, phys_w: w, phys_h: h, phys_stride: stride,
+            scale: 100, direct: true,
+        }
     }
 
     pub fn flush(&self) {
-        if self.ok {
-            unsafe { crate::video::flush(); }
+        if !self.ok {
+            return;
+        }
+        unsafe {
+            if !self.direct && self.phys_w > 0 && self.phys_h > 0 && self.w > 0 && self.h > 0 {
+                let src = core::ptr::addr_of!(LOGICAL) as *const u32;
+                let mut y = 0usize;
+                while y < self.phys_h {
+                    let sy = y * self.h / self.phys_h;
+                    let mut x = 0usize;
+                    while x < self.phys_w {
+                        let sx = x * self.w / self.phys_w;
+                        *self.phys_fb.add(y * self.phys_stride + x) = *src.add(sy * self.w + sx);
+                        x += 1;
+                    }
+                    y += 1;
+                }
+            }
+            crate::video::flush();
         }
     }
 
@@ -111,6 +229,7 @@ impl Gfx {
             debug_print("[gfx] no GOP");
             return Gfx::empty();
         }
+        GOP = gop;
         let mode = (*gop).mode;
         if mode.is_null() {
             return Gfx::empty();
@@ -164,7 +283,7 @@ impl Gfx {
         debug_print("[gfx] framebuffer ready");
         SCR_W = w as i32;
         SCR_H = h as i32;
-        Gfx { fb, w, h, stride, swap: pf == 0, ok: !fb.is_null() && w > 0 && h > 0 }
+        make_gfx(fb, w, h, stride, pf == 0, !fb.is_null() && w > 0 && h > 0, 100)
     }
 
     #[inline(always)]

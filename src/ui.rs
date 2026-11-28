@@ -101,9 +101,17 @@ impl Ui {
         let n = front.w * front.h;
         let back_ptr = core::ptr::addr_of_mut!(BACK) as *mut u32;
         let g = if n <= UI_MAX_PIX {
-            Gfx { fb: back_ptr, w: front.w, h: front.h, stride: front.w, swap: false, ok: front.ok }
+            Gfx {
+                fb: back_ptr, w: front.w, h: front.h, stride: front.w, swap: false, ok: front.ok,
+                phys_fb: back_ptr, phys_w: front.w, phys_h: front.h, phys_stride: front.w,
+                scale: front.scale, direct: true,
+            }
         } else {
-            Gfx { fb: front.fb, w: front.w, h: front.h, stride: front.stride, swap: front.swap, ok: front.ok }
+            Gfx {
+                fb: front.fb, w: front.w, h: front.h, stride: front.stride, swap: front.swap, ok: front.ok,
+                phys_fb: front.phys_fb, phys_w: front.phys_w, phys_h: front.phys_h,
+                phys_stride: front.phys_stride, scale: front.scale, direct: front.direct,
+            }
         };
         let mut ui = Ui {
             front,
@@ -544,7 +552,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.1", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.2", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -1060,6 +1068,17 @@ impl Ui {
                 wins[FOCUS].app.settings.page = 2;
             }
             AppAction::SetWallpaper(i) => self.set_wallpaper(i as usize),
+            AppAction::SetResolution(w, h) => {
+                crate::display::set_resolution(w as u32, h as u32);
+                if let Some(ng) = crate::gfx::set_resolution(w as usize, h as usize, self.g.scale) {
+                    *self = Ui::new(ng);
+                }
+            }
+            AppAction::SetScale(s) => {
+                crate::display::set_scale(s as u32);
+                let ng = crate::gfx::rescale(&self.g, s as u32);
+                *self = Ui::new(ng);
+            }
             _ => {}
         }
 

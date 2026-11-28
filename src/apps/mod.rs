@@ -17,6 +17,8 @@ pub enum AppAction {
     OpenUpdate,
     OpenApp(AppId),
     SetWallpaper(u8),
+    SetResolution(u16, u16),
+    SetScale(u16),
 }
 
 pub struct Terminal {
@@ -36,7 +38,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.2.1 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.2.2 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -214,7 +216,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.2.1 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.2.2 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -236,7 +238,7 @@ impl Terminal {
                 }
             }
             "sysdiag" => {
-                self.print("HYWOS 1.2.1 · MEMZ-LMXDG 系统诊断");
+                self.print("HYWOS 1.2.2 · MEMZ-LMXDG 系统诊断");
                 self.print(if crate::hw::cpu().acpi_ok { "ACPI: MADT 已解析" } else { "ACPI: 未找到" });
                 self.print(if crate::power::acpi_ready() { "FADT: 已找到（软关机可用）" } else { "FADT: 未找到" });
                 let (ct, ce) = crate::hw::smp();
@@ -1029,7 +1031,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.2.1 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.2.2 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1251,11 +1253,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.1", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.2", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.2.1（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.2.2（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1444,15 +1446,13 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
                 }
                 if ly > top + 142 && ly < top + 172 {
                     let i = ((lx - cx) / 120).clamp(0, 2);
-                    let v = [100u32, 125, 150][i as usize];
-                    crate::display::set_scale(v);
-                    return AppAction::None;
+                    let v = [100u16, 125, 150][i as usize];
+                    return AppAction::SetScale(v);
                 }
                 if ly > top + 200 && ly < top + 230 {
                     let i = ((lx - cx) / 150).clamp(0, 2);
-                    let (w, h) = [(1024u32, 768u32), (1280, 800), (1920, 1080)][i as usize];
-                    crate::display::set_resolution(w, h);
-                    return AppAction::None;
+                    let (w, h) = [(1024u16, 768u16), (1280, 800), (1920, 1080)][i as usize];
+                    return AppAction::SetResolution(w, h);
                 }
                 if ly > top + 246 && ly < top + 280 {
                     if lx > cx && lx < cx + 110 {
@@ -1700,7 +1700,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.2.1");
+            set_update_msg(s, true, "已是最新版本 1.2.2");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

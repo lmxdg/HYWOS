@@ -1,11 +1,11 @@
 [
   {
-    "tag_name": "v1.1.5",
-    "name": "HYWOS 1.1.5 «Windows 风格桌面版»",
+    "tag_name": "v1.1.6",
+    "name": "HYWOS 1.1.6 «混合内核 + 双引导版»",
     "assets": [
       {
-        "name": "hywos-1.1.5.updpkg",
-        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.5/hywos-1.1.5.updpkg"
+        "name": "hywos-1.1.6.updpkg",
+        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.1.6/hywos-1.1.6.updpkg"
       }
     ]
   }

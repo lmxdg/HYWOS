@@ -14,6 +14,7 @@ mod net;
 mod netstack;
 mod port;
 mod ps2;
+mod ckernel;
 mod kernel;
 mod ring3;
 mod updater;
@@ -41,7 +42,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.5 (x86_64 UEFI, Rust no_std)");
+        debug_print("HYWOS 1.1.6 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -154,7 +155,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         debug_print("[stage] ui loop");
         loop {
             ui.tick();
-            bs_stall(12_000);
+            bs_stall(8_000);
         }
     }
 }

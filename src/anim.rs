@@ -1,4 +1,4 @@
-use crate::gfx::{lerp, rgb, text_width, Gfx};
+use crate::gfx::{cosf, lerp, rgb, sinf, text_width, Gfx};
 use crate::logo::LOGO_RGBA;
 
 const FRAMES_TOTAL: u32 = 72;
@@ -110,6 +110,24 @@ impl BootAnim {
         let tw = text_width(title, 3);
         let ty = top + sz + 26;
         g.text_a(cx - tw / 2, ty, title, rgb(236, 246, 255), 3, alpha);
+
+        // 底部旋转加载圈（替代旧式加载点）
+        let scy = ty + 56;
+        let sr = 11i32;
+        g.ring(cx, scy, sr, 2, rgb(38, 48, 72), (140u32 * alpha as u32 / 255) as u8);
+        let t = f as f32 * 0.22;
+        let mut i = 0i32;
+        while i < 9 {
+            let a0 = t + i as f32 * 0.20;
+            let a1 = a0 + 0.16;
+            let x0 = cx + (cosf(a0) * sr as f32) as i32;
+            let y0 = scy + (sinf(a0) * sr as f32) as i32;
+            let x1 = cx + (cosf(a1) * sr as f32) as i32;
+            let y1 = scy + (sinf(a1) * sr as f32) as i32;
+            let a = ((40 + i * 22) as u32 * alpha as u32 / 255) as u8;
+            g.line(x0, y0, x1, y1, rgb(120, 200, 255), a);
+            i += 1;
+        }
 
         self.frame >= FRAMES_TOTAL
     }

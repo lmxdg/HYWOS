@@ -8,6 +8,8 @@ if [ ! -f "$EFI" ]; then
   exit 1
 fi
 
+VERSION=1.1.6
+
 rm -rf build
 
 mkdir -p build/esp/EFI/BOOT
@@ -31,16 +33,20 @@ mmd -i build/efiboot.img ::/HYWOS/SYSTEM
 mcopy -i build/efiboot.img tools/cdmark.txt ::/HYWOS/CD
 mcopy -i build/efiboot.img tools/welcome.txt ::/HYWOS/SYSTEM/WELCOME.TXT
 
+echo "creating BIOS boot image (dual boot)"
+mkdir -p boot/bios
+nasm -f bin -o build/bios.img boot/bios/boot.asm
+
 echo "creating usb.img (user volume, MBR + FAT32)"
 dd if=/dev/zero of=build/usb.img bs=1M count=64 status=none
 printf 'label: dos\nstart=2048, size=129024, type=0c, bootable\n' | sfdisk -q build/usb.img
 mkfs.fat -F 32 --offset 2048 build/usb.img 64512 >/dev/null
-python3 tools/make_updpkg.py build/hywos-1.1.5.updpkg 1.1.5 "$EFI"
+python3 tools/make_updpkg.py "build/hywos-${VERSION}.updpkg" "$VERSION" "$EFI"
 IMG="build/usb.img@@1M"
 mmd -i "$IMG" ::/Documents
 mmd -i "$IMG" ::/Pictures
 mmd -i "$IMG" ::/updates
-mcopy -i "$IMG" build/hywos-1.1.5.updpkg ::/hywos-1.1.5.updpkg
+mcopy -i "$IMG" "build/hywos-${VERSION}.updpkg" "::/hywos-${VERSION}.updpkg"
 mcopy -i "$IMG" tools/welcome.txt ::/Documents/welcome.txt
 mcopy -i "$IMG" tools/welcome.txt ::/updates/readme.txt
 mcopy -i "$IMG" tools/latest.json ::/updates/latest.json
@@ -49,11 +55,12 @@ echo "creating kernel test disk"
 dd if=/dev/zero of=build/kdisk.img bs=1M count=64 status=none
 dd if=/dev/zero of=build/install.img bs=1M count=256 status=none
 
-echo "creating ISO"
+echo "creating hybrid ISO (UEFI + BIOS)"
 cp build/efiboot.img build/iso/efiboot.img
+cp build/bios.img build/iso/bios.img
 xorriso -as mkisofs -R -J -V HYWOS \
-  -o build/hywos.iso \
+  -b bios.img -no-emul-boot -boot-load-size 4 -eltorito-alt-boot \
   -e efiboot.img -no-emul-boot -isohybrid-gpt-basdat \
-  build/iso >/dev/null
+  -o build/hywos.iso build/iso >/dev/null
 
-ls -lh build/hywos.iso build/efiboot.img build/usb.img build/kdisk.img build/hywos-1.1.5.updpkg
+ls -lh build/hywos.iso build/efiboot.img build/bios.img build/usb.img build/kdisk.img "build/hywos-${VERSION}.updpkg"

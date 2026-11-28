@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.5 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.6 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -101,7 +101,7 @@ impl Terminal {
                 self.print("df / mount  文件系统信息");
                 self.print("uname date ps uptime whoami");
                 self.print("weather     天气摘要");
-                self.print("kernel      宏内核子系统状态");
+                self.print("kernel      混合内核与驱动总线状态");
                 self.print("net         网卡驱动、DHCP/IP/DNS 状态");
                 self.print("dhcp        重新获取 DHCP 地址");
                 self.print("resolve <域名>  DNS A 记录查询");
@@ -212,7 +212,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.5 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.6 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -234,7 +234,7 @@ impl Terminal {
                 }
             }
             "kernel" => {
-                self.print("HYWOS 宏内核（Monolithic）");
+                self.print("HYWOS 混合内核（Hybrid）· C/C++ 内核核心 + Rust UI");
                 let mut b = [0u8; 64];
                 let l = crate::kernel::status_line(&mut b);
                 self.print(core::str::from_utf8_unchecked(&b[..l]));
@@ -253,6 +253,39 @@ impl Terminal {
                     for c in sub.detail.bytes() { if k < 91 { line[k] = c; k += 1; } }
                     self.print(core::str::from_utf8_unchecked(&line[..k]));
                     i += 1;
+                }
+                let dc = crate::kernel::driver_count();
+                let db = crate::kernel::driver_bound();
+                let mut dl = [0u8; 80];
+                let mut dk = 0usize;
+                for c in "驱动总线 builtin ".bytes() { dl[dk] = c; dk += 1; }
+                dk += crate::hw::num2(&mut dl[dk..], crate::kernel::driver_builtin() as u32, 1);
+                for c in " module ".bytes() { dl[dk] = c; dk += 1; }
+                dk += crate::hw::num2(&mut dl[dk..], crate::kernel::driver_module() as u32, 1);
+                for c in " bound ".bytes() { dl[dk] = c; dk += 1; }
+                dk += crate::hw::num2(&mut dl[dk..], db as u32, 1);
+                dl[dk] = b'/'; dk += 1;
+                dk += crate::hw::num2(&mut dl[dk..], dc as u32, 1);
+                for c in " · C++ 驱动总线".bytes() { dl[dk] = c; dk += 1; }
+                self.print(core::str::from_utf8_unchecked(&dl[..dk]));
+                let mut dj = 0usize;
+                while dj < dc {
+                    let mut dline = [0u8; 92];
+                    let mut k2 = 0usize;
+                    dline[k2] = b'*'; k2 += 1;
+                    for c in crate::kernel::driver_name(dj).bytes() { if k2 < 52 { dline[k2] = c; k2 += 1; } }
+                    for c in " [".bytes() { if k2 < 60 { dline[k2] = c; k2 += 1; } }
+                    for c in crate::kernel::driver_bus_name(dj).bytes() { if k2 < 72 { dline[k2] = c; k2 += 1; } }
+                    dline[k2] = b'/'; k2 += 1;
+                    for c in crate::kernel::driver_kind_name(dj).bytes() { if k2 < 84 { dline[k2] = c; k2 += 1; } }
+                    dline[k2] = b']'; k2 += 1;
+                    if crate::kernel::driver_is_bound(dj) {
+                        for c in " 已绑定".bytes() { if k2 < 90 { dline[k2] = c; k2 += 1; } }
+                    } else {
+                        for c in " 未绑定".bytes() { if k2 < 90 { dline[k2] = c; k2 += 1; } }
+                    }
+                    self.print(core::str::from_utf8_unchecked(&dline[..k2]));
+                    dj += 1;
                 }
             }
             "dhcp" => {
@@ -890,7 +923,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.5 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.6 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1050,11 +1083,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "宏内核桌面版 · 版本 1.1.5", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.6", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.5（Rust no_std UEFI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.6（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1342,7 +1375,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.5");
+            set_update_msg(s, true, "已是最新版本 1.1.6");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

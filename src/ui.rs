@@ -289,8 +289,7 @@ impl Ui {
     }
 
     fn tb_slot_at(&self, mx: i32, my: i32) -> i32 {
-        let h = self.h();
-        if my < h - TB_H { return -2; }
+        if my >= TB_H { return -2; }
         if mx >= self.w() - 8 { return -3; }
         if mx >= 4 && mx < 52 { return 0; }
         let (x0, iw, gap) = self.tb_group();
@@ -305,26 +304,28 @@ impl Ui {
 
     fn draw_start_mark(&self, cx: i32, cy: i32, sz: i32) {
         let g = &self.g;
-        let u = sz / 2;
-        let c = rgb(96, 186, 255);
-        g.rect(cx - u, cy - u, u - 1, u - 1, c, 255);
-        g.rect(cx + 1, cy - u, u - 1, u - 1, c, 255);
-        g.rect(cx - u, cy + 1, u - 1, u - 1, c, 255);
-        g.rect(cx + 1, cy + 1, u - 1, u - 1, c, 255);
+        g.blit_rgba(
+            cx - sz / 2,
+            cy - sz / 2,
+            sz,
+            sz,
+            &crate::logo::LOGO_RGBA,
+            crate::logo::LOGO_SIZE as i32,
+            crate::logo::LOGO_SIZE as i32,
+        );
     }
 
     unsafe fn draw_taskbar(&self) {
         let g = &self.g;
         let w = self.w();
-        let h = self.h();
-        let y0 = h - TB_H;
+        let y0 = 0;
         g.rect(0, y0, w, TB_H, rgb(28, 28, 32), 246);
-        g.rect(0, y0, w, 1, rgb(255, 255, 255), 34);
+        g.rect(0, y0 + TB_H - 1, w, 1, rgb(255, 255, 255), 34);
         let cy = y0 + TB_H / 2;
         if self.hover == 0 {
             g.round_rect(4, y0 + 4, 44, TB_H - 8, 4, rgb(255, 255, 255), 28);
         }
-        self.draw_start_mark(26, cy, 18);
+        self.draw_start_mark(26, cy, 24);
         g.round_rect(58, y0 + 6, 180, TB_H - 12, 4, rgb(45, 45, 50), 255);
         g.ring(74, cy, 6, 1, rgb(170, 180, 196), 220);
         g.line(78, cy + 4, 82, cy + 8, rgb(170, 180, 196), 220);
@@ -420,8 +421,8 @@ impl Ui {
             let lw = text_width(label, 1) + 22;
             let cx = if self.hover == 0 { 26 } else { x0 + (self.hover - 1) * (iw + gap) + iw / 2 };
             let lx = cx - lw / 2;
-            g.round_rect(lx, y0 - 32, lw, 24, 4, rgb(48, 48, 54), 240);
-            g.text_center(lx + lw / 2, y0 - 27, label, rgb(238, 244, 252), 1);
+            g.round_rect(lx, y0 + TB_H + 6, lw, 24, 4, rgb(48, 48, 54), 240);
+            g.text_center(lx + lw / 2, y0 + TB_H + 11, label, rgb(238, 244, 252), 1);
         }
     }
 
@@ -500,7 +501,9 @@ impl Ui {
         let pw = 600i32;
         let ph = 560i32;
         let px = (self.w() - pw) / 2;
-        let py = self.h() - TB_H - ph - 8;
+        let mut py = TB_H + 8;
+        if py + ph > self.h() - 8 { py = self.h() - ph - 8; }
+        if py < TB_H + 4 { py = TB_H + 4; }
         (px, py, pw, ph)
     }
 
@@ -559,7 +562,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.1.5", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.1.6", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -567,7 +570,7 @@ impl Ui {
         let mut i = 0;
         while i < DESK_ICONS.len() {
             let x = 22;
-            let y = 18 + i as i32 * 96;
+            let y = TB_H + 14 + i as i32 * 96;
             if self.desk_sel == i as i32 {
                 g.round_rect(x - 8, y - 8, 64, 92, 6, rgb(96, 156, 226), 60);
                 g.round_rect_outline(x - 8, y - 8, 64, 92, 6, rgb(140, 190, 246), 140);
@@ -586,7 +589,7 @@ impl Ui {
         let mut i = 0usize;
         while i < DESK_ICONS.len() {
             let x = 22 - 8;
-            let y = 18 + i as i32 * 96 - 8;
+            let y = TB_H + 14 + i as i32 * 96 - 8;
             if mx >= x && mx < x + 64 && my >= y && my < y + 92 { return Some(i); }
             i += 1;
         }
@@ -679,7 +682,7 @@ impl Ui {
             wins[slot].w = w;
             wins[slot].h = h;
             wins[slot].x = (self.w() - w) / 2;
-            wins[slot].y = 40 + slot as i32 * 18;
+            wins[slot].y = TB_H + 40 + slot as i32 * 14;
             apps::init_state(&mut wins[slot].app, id);
             FOCUS = slot;
         } else {
@@ -705,7 +708,7 @@ impl Ui {
             wins[idx].rw = wins[idx].w;
             wins[idx].rh = wins[idx].h;
             wins[idx].x = 0;
-            wins[idx].y = 0;
+            wins[idx].y = TB_H;
             wins[idx].w = self.w();
             wins[idx].h = self.h() - TB_H;
             wins[idx].max = true;
@@ -786,8 +789,8 @@ impl Ui {
                     let mut ny = self.input.y - self.drag_dy;
                     if nx < 40 - wins[idx].w { nx = 40 - wins[idx].w; }
                     if nx > w - 80 { nx = w - 80; }
-                    if ny < 0 { ny = 0; }
-                    if ny > h - TB_H - 60 { ny = h - TB_H - 60; }
+                    if ny < TB_H { ny = TB_H; }
+                    if ny > h - 60 { ny = h - 60; }
                     wins[idx].x = nx;
                     wins[idx].y = ny;
                     wins[idx].max = false;
@@ -824,7 +827,7 @@ impl Ui {
                 }
             }
             if self.input.clicked {
-                if self.input.y >= h - TB_H {
+                if self.input.y < TB_H {
                     self.launchpad = false;
                     self.lp_t = 0;
                     self.search_len = 0;
@@ -878,20 +881,21 @@ impl Ui {
             self.hover = self.tb_slot_at(self.input.x, self.input.y);
             if self.input.right_clicked {
                 if self.hit_window(self.input.x, self.input.y).is_none()
-                    && self.input.y >= 0 && self.input.y < h - TB_H - 8
+                    && self.input.y >= TB_H && self.input.y < h
                     && self.input.x >= 0 && self.input.x < w
                 {
                     let mut mx = self.input.x;
                     let mut my = self.input.y;
                     if mx > w - 200 { mx = w - 200; }
-                    if my > h - TB_H - 196 { my = h - TB_H - 196; }
+                    if my > h - 196 { my = h - 196; }
+                    if my < TB_H + 4 { my = TB_H + 4; }
                     self.menu = true;
                     self.menu_x = mx;
                     self.menu_y = my;
                 }
             }
             if self.input.clicked {
-                if self.input.y >= h - TB_H {
+                if self.input.y < TB_H {
                     self.click_taskbar(&mut action);
                 } else if let Some(di) = self.desk_icon_at(self.input.x, self.input.y) {
                     self.desk_sel = di as i32;

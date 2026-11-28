@@ -5,12 +5,13 @@
 </p>
 
 <p align="center">
-  <b>开源 · MIT · x86_64 UEFI</b>
+  <b>开源 · MIT · x86_64 · UEFI + BIOS</b>
 </p>
 
-HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接任何第三方 crate，
-以 `no_std` 方式直接运行在固件之上，自带显卡、输入、音频驱动、桌面环境、
-应用套件与安全中心，可制作启动 U 盘或 ISO 安装到本地磁盘。
+HYWOS 1.1.6 是一个 **C/C++ 混合内核 + Rust 桌面** 的 64 位操作系统，支持
+**UEFI 与 BIOS 双引导**。内核核心、子系统注册表与混合驱动总线由 C/C++ 实现，
+界面、合成器、窗口与应用仍由 Rust 编写；不链接任何第三方 crate，自带显卡、
+输入、音频驱动、桌面环境、应用套件与安全中心，可制作启动 U 盘或 ISO 安装到本地磁盘。
 
 ![桌面](docs/screenshots/desktop.png)
 
@@ -23,7 +24,7 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - [输入](#输入)
 - [音频](#音频)
 - [硬件与驱动](#硬件与驱动)
-- [宏内核（Monolithic）](#宏内核monolithic)
+- [混合内核（Hybrid）](#混合内核hybrid)
 - [Ring3 与双页表](#ring3-与双页表)
 - [系统架构](#系统架构)
 - [文件系统与数据](#文件系统与数据)
@@ -38,8 +39,10 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 ## 设计目标
 
 - **零依赖**：不引入任何 crate，直接手写 UEFI 协议绑定、图形合成、文件系统与驱动。
-- **宏内核**：驱动、文件系统、网络、音频、图形与桌面全部运行在 ring0 单地址空间，
-  统一由内核子系统层管理；用户程序通过 `int 0x80` 进入内核系统调用。
+- **混合内核**：内核核心、子系统注册表与驱动总线由 C/C++ 实现，兼顾内核态服务与
+  模块化驱动；UI 与桌面保留 Rust，Rust 通过 FFI 与 C/C++ 内核交互。
+- **混合驱动**：内置驱动（GOP、PS/2、VFS、AC'97）与模块驱动（virtio-gpu、SVGA、
+  e1000、RTL8139、virtio-net、USB HID、UEFI SNP）由 C++ 驱动总线统一匹配与绑定。
 - **真实可用**：桌面上的每个应用都有实际功能与持久化数据，不使用占位页面。
 - **本地优先**：数据写入用户卷；自研 TCP/IP 栈提供明文 HTTP，TLS 由固件 HTTP 承担，离线时功能完整。
 - **可安装、可更新**：ISO 安装到本地磁盘，`.updpkg` 更新内核并保留用户数据。
@@ -69,9 +72,9 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 | 安全中心 | 实时监控、快速/全盘查杀、病毒库 | `\HYWOS\SECURITY` |
 | 天气 | 5 城市离线 5 日预报（开始菜单） | 内置 |
 
-桌面采用 Windows 风格：底部全宽任务栏（Win10 左对齐）包含开始按钮、搜索框与
+桌面采用 Windows 风格：**顶部全宽任务栏**包含系统 LOGO 开始按钮、搜索框与
 6 个固定应用，开始菜单展示全部 20 个应用；
-桌面左上角提供「此电脑 / 终端 / 浏览器 / 安全中心」图标，双击打开。
+任务栏下方左侧提供「此电脑 / 终端 / 浏览器 / 安全中心」图标，双击打开。
 应用首次打开时会自动创建缺失目录与示例记录。
 
 ## 安全中心
@@ -90,7 +93,7 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 - 显卡探测顺序：virtio-gpu（legacy 2D）→ VMware SVGA II → VBE → UEFI GOP。
 - SVGA 读取 `MAX_WIDTH/MAX_HEIGHT` 选择安全模式，并校验 32bpp。
 - 软件合成器支持到 **1920×1080**；1024×768 与 1280×800 均完整显示任务栏与开始菜单。
-- 启动动画：新 LOGO 由小到大缓入，`HYWOS` 字标同步淡入，约 2.4 秒。
+- 启动动画：LOGO 由小到大缓入，`HYWOS` 字标同步淡入，底部旋转加载圈，约 2.4 秒。
 
 ## 输入
 
@@ -137,27 +140,41 @@ HYWOS 是一个用 Rust 从零编写的 64 位 UEFI 操作系统。它不链接�
 | 网络 | Intel e1000/82574L、Realtek RTL8139、virtio-net（legacy）；UEFI SNP 回退 |
 | 固件 | ACPI MADT、CPUID、RTC、SMBIOS 字符串 |
 
-## 宏内核（Monolithic）
+## 混合内核（Hybrid）
 
-HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空间，模块之间通过
-内核 API 直接调用，避免微内核的 IPC 开销。
+HYWOS 1.1.6 采用混合内核架构：
+
+- **C/C++ 内核核心**（`kernel/`）：子系统注册表、状态机、内核能力位、运行计数、
+  自检与驱动总线。所有导出函数使用 `ms_abi`，Rust 以 `extern "efiapi"` 调用。
+- **Rust 桌面**（`src/`）：显卡/输入/存储/网络/音频寄存器访问、合成器、窗口、
+  任务栏、开始菜单与应用套件。
+- **内核态服务 + 模块化服务**：核心服务驻留在内核空间，驱动与子系统通过统一
+  注册表管理，兼顾宏内核的直接调用与微内核的模块边界。
 
 | # | 子系统 | 职责 | 实现 |
 |---|---|---|---|
+| 0 | Kernel Core | 子系统与驱动总线、能力位、自检 | `kernel/core/*.c(pp)` |
 | 1 | Video | 显卡探测、framebuffer、模式设置 | `video.rs` / `gfx.rs` |
 | 2 | Input | PS/2、USB HID、UEFI 指针、键盘 | `input.rs` / `ps2.rs` / `usbhid.rs` |
 | 3 | Storage | 卷、FAT16/FAT32、文件与目录 | `fs.rs` / `diskfmt.rs` |
 | 4 | Network | e1000/82574L、RTL8139、virtio-net、DHCP/DNS/TCP/HTTP | `net.rs` / `netstack.rs` |
 | 5 | Audio | AC'97 DMA 与 PC Speaker | `audio.rs` |
-| 6 | UI | 合成器、窗口、任务栏、开始菜单、桌面图标 | `ui.rs` / `apps/` |
+| 6 | UI | 合成器、窗口、顶部任务栏、开始菜单、桌面图标 | `ui.rs` / `apps/` |
 | 7 | Ring3 | GDT/TSS/IDT、双页表、用户程序 | `ring3.rs` |
 | 8 | Updates | `.updpkg`、GitHub Releases、离线回退 | `updater.rs` / `http.rs` |
 
-- `src/kernel.rs` 维护子系统状态、提供统一内核 API（CPU/内存/运行时间/网卡/
-  音视频/窗口等）与系统调用入口 `kernel::syscall`。
-- 终端 `kernel` 命令列出 8 个子系统的状态与说明；关于本机与安全中心显示
-  “宏内核 · N/8 子系统就绪”。
-- 宏内核不排斥用户态：Ring3 程序仍可通过 `int 0x80` 请求内核服务。
+- `src/ckernel.rs` 提供 C/C++ 内核 FFI；`src/kernel.rs` 只负责探测上报与 UI 快照。
+- 终端 `kernel` 命令列出 9 个子系统与 C++ 驱动总线（builtin 6 / module 10，
+  16/16 已绑定）；关于本机与安全中心显示“混合内核 · N/9 · 驱动 B/D”。
+- 混合内核不排斥用户态：Ring3 程序仍可通过 `int 0x80` 请求内核服务。
+
+### 混合驱动架构
+
+C++ 驱动总线（`kernel/core/driver_bus.cpp`）区分两类驱动：
+
+- **builtin**：随内核驻留的 GOP 帧缓冲、PS/2 键盘/鼠标、FAT VFS、UEFI Block、AC'97。
+- **module**：按总线匹配后绑定的 virtio-gpu、VMware SVGA、Bochs VBE、e1000/e1000e、
+  RTL8139、virtio-net、USB HID、UEFI SNP、UEFI Absolute Pointer。
 
 ## Ring3 与双页表
 
@@ -179,7 +196,8 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 
 启动流程：
 
-1. 固件加载 `\EFI\BOOT\BOOTX64.EFI`。
+1. UEFI 固件加载 `\EFI\BOOT\BOOTX64.EFI`；BIOS 固件通过 El Torito 加载 `bios.img`
+   进入兼容引导画面（旋转加载圈 + 双引导提示）。
 2. 探测显卡并建立合成器；挂载卷，判定启动卷与安装介质。
 3. 若从 ISO 启动：询问安装 → 复制系统文件 → 创建 FAT16 引导分区。
 4. 否则：LOGO 缩放动画 → 预生成图标 → 探测 ACPI/网络/输入/音频 → 桌面。
@@ -190,7 +208,8 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 |---|---|
 | `src/main.rs` | EFI 入口、启动流程、内存函数 |
 | `src/efi.rs` | UEFI 协议绑定、ConIn、CRC32、内存映射 |
-| `src/kernel.rs` | 宏内核子系统表、统一内核 API、系统调用入口 |
+| `src/ckernel.rs` / `kernel/` | C/C++ 混合内核核心、C++ 驱动总线与 FFI |
+| `src/kernel.rs` | Rust 侧混合内核前端、探测上报、系统调用入口 |
 | `src/video.rs` | virtio-gpu / SVGA / VBE / GOP |
 | `src/gfx.rs` | 32bpp 合成、UTF-8 混排、圆角/渐变/位图 |
 | `src/cjk.rs` | GB2312 点阵字库（6786 字） |
@@ -229,30 +248,46 @@ HYWOS 采用宏内核架构：所有内核服务运行在同一 ring0 地址空�
 
 ## 构建
 
-依赖 Rust 稳定版与 `x86_64-unknown-uefi` target：
+依赖 Rust 稳定版、`x86_64-unknown-uefi` target，以及可生成 x86_64 COFF 的 C/C++
+交叉编译器（如 clang）与 `nasm`、`xorriso`、`mtools`、`dosfstools`。
 
 ```sh
 rustup target add x86_64-unknown-uefi
-cargo build --release
+cargo build --release --target x86_64-unknown-uefi
 sh tools/mkiso.sh
 ```
 
+`build.rs` 会把 `kernel/` 下的 C/C++ 源码交叉编译为 x86_64 COFF 对象并链接进
+UEFI 映像。构建机为 aarch64 时会自动使用 `clang --target=x86_64-pc-windows-msvc`。
+
 产物：
 
-- `build/hywos.iso`：可启动安装 ISO。
+- `build/hywos.iso`：UEFI + BIOS 双引导安装 ISO。
 - `build/esp/EFI/BOOT/BOOTX64.EFI`：可直接放入 ESP 的内核。
+- `build/bios.img`：BIOS El Torito 引导扇区。
 - `build/hywos-<版本>.updpkg`：内核更新包。
 
 ## 在 QEMU 中运行
 
+UEFI（OVMF 分离固件）：
+
 ```sh
-qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
-  -bios /usr/share/ovmf/OVMF.fd \
-  -cdrom build/hywos.iso \
+qemu-system-x86_64 -M q35 -m 512 -smp 2 -vga std -usb \
+  -drive if=pflash,format=raw,readonly=on,file=code.fd \
+  -drive if=pflash,format=raw,file=vars.fd \
+  -cdrom build/hywos.iso -boot d \
   -drive file=build/install.img,format=raw,if=virtio
 ```
 
-安装完成后移除 ISO，仅保留安装盘即可从硬盘启动。
+BIOS（SeaBIOS，无需 OVMF）：
+
+```sh
+qemu-system-x86_64 -M pc -m 256 -vga std \
+  -cdrom build/hywos.iso -boot d
+```
+
+安装完成后移除 ISO，仅保留安装盘即可从本地磁盘启动。BIOS 路径提供兼容引导
+画面与加载圈；完整图形桌面由 UEFI 启动提供。
 
 ## 应用开发
 
@@ -317,7 +352,7 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 |---|---|
 | ![ring3](docs/screenshots/terminal-ring3.png) | ![ring3f](docs/screenshots/terminal-ring3f.png) |
 
-| 终端 · 宏内核子系统 |
+| 终端 · 混合内核与驱动总线 |
 |---|
 | ![kernel](docs/screenshots/terminal-kernel.png) |
 
@@ -366,6 +401,9 @@ qemu-system-x86_64 -M q35 -m 512 -smp 4 -vga std -usb \
 - 中文输入：显示完整，键盘输入为 ASCII；中文输入法不在范围内。
 - 用户态：内置固定用户程序用于验证 Ring3/syscall/隔离，尚未实现 ELF 加载器与独立用户进程管理。
 - 分辨率：软件合成上限 1920×1080。
+- BIOS 引导：提供 El Torito 兼容引导画面与旋转加载圈；完整图形桌面依赖 UEFI GOP。
+- 混合内核：C/C++ 负责内核核心、子系统注册表与驱动总线；具体硬件寄存器访问仍在 Rust，
+  并非把全部驱动寄存器操作迁入 C/C++。
 
 ## 开源协议
 

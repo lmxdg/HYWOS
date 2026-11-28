@@ -127,6 +127,16 @@ pub unsafe fn pointer_present() -> bool {
     !POINTER.is_null()
 }
 
+const POINTER_GAIN_NUM: i32 = 12;
+const POINTER_GAIN_DEN: i32 = 5;
+
+/// 相对指针增益：小幅移动保留精细控制，常规移动约 2.4 倍，修复指针移速过慢。
+fn pointer_gain(v: i32) -> i32 {
+    let a = if v < 0 { -v } else { v };
+    let num = if a <= 3 { POINTER_GAIN_NUM - 2 } else { POINTER_GAIN_NUM };
+    v * num / POINTER_GAIN_DEN
+}
+
 pub struct InputState {
     pub x: i32,
     pub y: i32,
@@ -198,8 +208,8 @@ impl InputState {
                 let dx = (*s).relative_x;
                 let dy = (*s).relative_y;
                 if dx != 0 || dy != 0 {
-                    self.x += dx;
-                    self.y += dy;
+                    self.x += pointer_gain(dx);
+                    self.y += pointer_gain(dy);
                     if self.x < 0 { self.x = 0; }
                     if self.y < 0 { self.y = 0; }
                     if self.x >= w - 1 { self.x = w - 1; }
@@ -221,8 +231,8 @@ impl InputState {
         }
         if let Some((dx, dy, btn, moved)) = crate::usbhid::rel_state() {
             if moved {
-                self.x += dx;
-                self.y += dy;
+                self.x += pointer_gain(dx);
+                self.y += pointer_gain(dy);
                 if self.x < 0 { self.x = 0; }
                 if self.y < 0 { self.y = 0; }
                 if self.x >= w - 1 { self.x = w - 1; }
@@ -235,14 +245,16 @@ impl InputState {
             return;
         }
         if crate::ps2::mouse_ok() {
-            let (mut dx, mut dy, btn, moved) = crate::ps2::take_mouse();
-            if dx > 45 { dx = 45; }
-            if dx < -45 { dx = -45; }
-            if dy > 45 { dy = 45; }
-            if dy < -45 { dy = -45; }
+            let (dx, dy, btn, moved) = crate::ps2::take_mouse();
+            let mut ax = pointer_gain(dx);
+            let mut ay = pointer_gain(dy);
+            if ax > 160 { ax = 160; }
+            if ax < -160 { ax = -160; }
+            if ay > 160 { ay = 160; }
+            if ay < -160 { ay = -160; }
             if moved {
-                self.x += dx;
-                self.y += dy;
+                self.x += ax;
+                self.y += ay;
                 if self.x < 0 { self.x = 0; }
                 if self.y < 0 { self.y = 0; }
                 if self.x >= w - 1 { self.x = w - 1; }

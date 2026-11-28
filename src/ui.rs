@@ -283,7 +283,7 @@ impl Ui {
     fn tb_slot_at(&self, mx: i32, my: i32) -> i32 {
         if my >= TB_H { return -2; }
         if mx >= self.w() - 8 { return -3; }
-        if mx >= self.w() - 200 && mx < self.w() - 8 { return -4; }
+        if mx >= self.w() - 232 && mx < self.w() - 8 { return -4; }
         if mx >= 4 && mx < 52 { return 0; }
         let (x0, iw, gap) = self.tb_group();
         let (_, rn) = self.run_slots();
@@ -456,6 +456,17 @@ impl Ui {
                 for ch in b"--:--".iter() { tb[tl] = *ch; tl += 1; }
             }
         }
+        // 控制中心入口图标
+        let ccx = w - 218;
+        if self.hover == -4 {
+            g.round_rect(ccx - 6, y0 + 4, 34, TB_H - 8, 6, rgb(255, 255, 255), 26);
+        }
+        g.round_rect(ccx, cy - 6, 18, 3, 1, rgb(190, 200, 218), 220);
+        g.circle(ccx + 5, cy - 5, 3, rgb(120, 190, 255), 240);
+        g.round_rect(ccx, cy, 18, 3, 1, rgb(190, 200, 218), 220);
+        g.circle(ccx + 13, cy + 1, 3, rgb(120, 190, 255), 240);
+        g.round_rect(ccx, cy + 6, 18, 3, 1, rgb(190, 200, 218), 220);
+        g.circle(ccx + 8, cy + 7, 3, rgb(120, 190, 255), 240);
         g.text(w - 132, y0 + 7, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
         if dl > 0 {
             g.text(w - 132, y0 + 24, core::str::from_utf8_unchecked(&d2[..dl]), rgb(170, 182, 200), 1);
@@ -514,11 +525,11 @@ impl Ui {
         }
     }
 
-    fn filtered(&self) -> ([AppId; 21], usize) {
-        let mut out = [AppId::Terminal; 21];
+    fn filtered(&self) -> ([AppId; 22], usize) {
+        let mut out = [AppId::Terminal; 22];
         let mut n = 0;
         let mut i = 0;
-        while i < 21 {
+        while i < 22 {
             let a = AppId::from_index(i);
             if self.matches(a) { out[n] = a; n += 1; }
             i += 1;
@@ -622,7 +633,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.3", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.4", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -686,6 +697,10 @@ impl Ui {
             }
         } else if slot == -4 {
             self.control_center = !self.control_center;
+            if self.control_center {
+                self.launchpad = false;
+                self.menu = false;
+            }
         } else if slot == 0 {
             self.launchpad = !self.launchpad;
             self.lp_t = 0;

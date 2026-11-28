@@ -1,11 +1,11 @@
 [
   {
-    "tag_name": "v1.2.3",
-    "name": "HYWOS 1.2.3 «控制中心版»",
+    "tag_name": "v1.2.4",
+    "name": "HYWOS 1.2.4 «AI 助手版»",
     "assets": [
       {
-        "name": "hywos-1.2.3.updpkg",
-        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.2.3/hywos-1.2.3.updpkg"
+        "name": "hywos-1.2.4.updpkg",
+        "browser_download_url": "https://github.com/lmxdg/HYWOS/releases/download/v1.2.4/hywos-1.2.4.updpkg"
       }
     ]
   }

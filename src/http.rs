@@ -142,7 +142,7 @@ unsafe fn free_headers(msg: *mut HttpMessage) {
     bs_free_pool(h as *mut u8);
 }
 
-unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redirect: &mut [u8]) -> Result<usize, u32> {
+unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, method: u32, auth: &[u8], body: &[u8], out: &mut [u8], redirect: &mut [u8]) -> Result<usize, u32> {
     let mut url16 = [0u16; 320];
     let ul = to_utf16(url, &mut url16);
     if ul + 1 >= url16.len() {
@@ -172,20 +172,31 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redi
         return Err(ERR_REQUEST);
     }
     let mut name1 = *b"User-Agent\0";
-    let mut val1 = *b"HYWOS-Update/1.2.3\0";
+    let mut val1 = *b"HYWOS-1.2.4\0";
     let mut name2 = *b"Accept\0";
-    let mut val2 = *b"application/vnd.github+json\0";
+    let mut val2 = *b"application/json\0";
+    let mut name3 = *b"Content-Type\0";
+    let mut val3 = *b"application/json\0";
+    let mut name4 = *b"Authorization\0";
+    let mut val4 = [0u8; 512];
+    let mut al = 0usize;
+    for c in b"Bearer " { val4[al] = *c; al += 1; }
+    for c in auth { if al < 510 { val4[al] = *c; al += 1; } }
+    val4[al] = 0;
     let mut headers = [
         HttpHeader { name: name1.as_mut_ptr(), value: val1.as_mut_ptr() },
         HttpHeader { name: name2.as_mut_ptr(), value: val2.as_mut_ptr() },
+        HttpHeader { name: name3.as_mut_ptr(), value: val3.as_mut_ptr() },
+        HttpHeader { name: name4.as_mut_ptr(), value: val4.as_mut_ptr() },
     ];
-    let mut req = HttpRequestData { method: 0, url: url16.as_mut_ptr() };
+    let hcount = if method == 0 || auth.is_empty() { 2 } else { 4 };
+    let mut req = HttpRequestData { method, url: url16.as_mut_ptr() };
     let mut msg = HttpMessage {
         data: &mut req as *mut HttpRequestData as *mut c_void,
-        header_count: 2,
+        header_count: hcount,
         headers: headers.as_mut_ptr(),
-        body_length: 0,
-        body: core::ptr::null_mut(),
+        body_length: body.len(),
+        body: if body.is_empty() { core::ptr::null_mut() } else { body.as_ptr() as *mut c_void },
     };
     let mut tok = HttpToken {
         event: ev_req,
@@ -259,6 +270,14 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, out: &mut [u8], redi
 }
 
 pub unsafe fn get(url: &str, out: &mut [u8]) -> Result<usize, u32> {
+    http_do(url, 0, &[], &[], out)
+}
+
+pub unsafe fn post(url: &str, auth: &[u8], body: &[u8], out: &mut [u8]) -> Result<usize, u32> {
+    http_do(url, 1, auth, body, out)
+}
+
+unsafe fn http_do(url: &str, method: u32, auth: &[u8], body: &[u8], out: &mut [u8]) -> Result<usize, u32> {
     bs_connect_all_network();
     let mut buf: *mut Handle = core::ptr::null_mut();
     let mut n: usize = 0;
@@ -298,7 +317,7 @@ pub unsafe fn get(url: &str, out: &mut [u8]) -> Result<usize, u32> {
                     loop {
                         let cur_str = core::str::from_utf8_unchecked(&cur[..cl]);
                         let mut redirect = [0u8; 512];
-                        match http_get_once(http, cur_str, out, &mut redirect) {
+                        match http_get_once(http, cur_str, method, auth, body, out, &mut redirect) {
                             Err(ERR_REDIRECT) if depth < 3 => {
                                 depth += 1;
                                 cl = 0;

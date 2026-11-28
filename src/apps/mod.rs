@@ -6,6 +6,7 @@ use crate::icon::{icon, AppId};
 
 pub mod suite;
 pub mod office;
+pub mod ai;
 
 pub const HEADER_H: i32 = 40;
 
@@ -38,7 +39,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.2.3 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.2.4 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -216,7 +217,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.2.3 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.2.4 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -238,7 +239,7 @@ impl Terminal {
                 }
             }
             "sysdiag" => {
-                self.print("HYWOS 1.2.3 · MEMZ-LMXDG 系统诊断");
+                self.print("HYWOS 1.2.4 · MEMZ-LMXDG 系统诊断");
                 self.print(if crate::hw::cpu().acpi_ok { "ACPI: MADT 已解析" } else { "ACPI: 未找到" });
                 self.print(if crate::power::acpi_ready() { "FADT: 已找到（软关机可用）" } else { "FADT: 未找到" });
                 let (ct, ce) = crate::hw::smp();
@@ -687,6 +688,7 @@ pub struct AppState {
     pub tick: u32,
     pub suite: suite::Suite,
     pub office: office::OfficeState,
+    pub ai: ai::AiState,
 }
 
 pub unsafe fn init_state(st: &mut AppState, id: AppId) {
@@ -696,6 +698,8 @@ pub unsafe fn init_state(st: &mut AppState, id: AppId) {
     if id == AppId::Office {
         st.office.scan();
     }
+    st.ai = ai::AiState::new();
+    st.ai.load();
     st.files_sel = 0;
     st.files_click = 0;
     st.files_cwd = Str80::empty();
@@ -764,6 +768,7 @@ pub fn app_size(id: AppId) -> (i32, i32) {
         AppId::Messages => (680, 480),
         AppId::Mail => (680, 480),
         AppId::Office => (880, 580),
+        AppId::AI => (760, 520),
         _ => (640, 420),
     }
 }
@@ -863,6 +868,7 @@ pub unsafe fn draw(st: &mut AppState, id: AppId, g: &Gfx, x: i32, y: i32, w: i32
         AppId::Files => draw_files(st, g, x, y, w, h),
         AppId::Settings => draw_settings(&mut st.settings, g, x, y, w, h),
         AppId::Office => office::draw(&mut st.office, g, x, y, w, h),
+        AppId::AI => ai::draw(&mut st.ai, g, x, y, w, h),
         AppId::Weather => draw_weather(&mut st.weather, g, x, y, w, h),
         AppId::Store => draw_store(&mut st.store, g, x, y, w, h),
         AppId::About => draw_about(g, x, y, w, h),
@@ -1062,7 +1068,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.2.3 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.2.4 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1284,11 +1290,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.3", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.4", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.2.3（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.2.4（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1367,6 +1373,9 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
     match id {
         AppId::Office => {
             office::click(&mut st.office, mx, my, x, y);
+            return AppAction::None;
+        }
+        AppId::AI => {
             return AppAction::None;
         }
         AppId::Settings => {
@@ -1612,6 +1621,9 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
         office::key(&mut st.office, scan, ch);
         return AppAction::None;
     }
+    if id == AppId::AI {
+        return ai::key(&mut st.ai, scan, ch);
+    }
     if suite::key(&mut st.suite, id, scan, ch) {
         return AppAction::None;
     }
@@ -1731,7 +1743,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.2.3");
+            set_update_msg(s, true, "已是最新版本 1.2.4");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

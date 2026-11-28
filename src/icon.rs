@@ -1,7 +1,7 @@
 use crate::font;
 use crate::gfx::{lerp, rgb};
 
-pub const APP_COUNT: usize = 21;
+pub const APP_COUNT: usize = 22;
 pub const ICON_SRC: usize = 256;
 pub const ICON_SIZE: usize = 64;
 pub const ICON_BYTES: usize = ICON_SIZE * ICON_SIZE * 4;
@@ -30,6 +30,7 @@ pub enum AppId {
     Messages = 18,
     Security = 19,
     Office = 20,
+    AI = 21,
 }
 
 impl AppId {
@@ -55,7 +56,8 @@ impl AppId {
             17 => AppId::Weather,
             18 => AppId::Messages,
             19 => AppId::Security,
-            _ => AppId::Office,
+            20 => AppId::Office,
+            _ => AppId::AI,
         }
     }
 
@@ -82,6 +84,7 @@ impl AppId {
             AppId::Messages => "信息",
             AppId::Security => "安全中心",
             AppId::Office => "HYWOffice",
+            AppId::AI => "AI 助手",
         }
     }
 
@@ -108,6 +111,7 @@ impl AppId {
             AppId::Messages => "messages",
             AppId::Security => "security",
             AppId::Office => "office",
+            AppId::AI => "ai",
         }
     }
 
@@ -134,6 +138,7 @@ impl AppId {
             AppId::Messages => (rgb(99, 224, 138), rgb(30, 158, 80)),
             AppId::Security => (rgb(86, 214, 158), rgb(16, 122, 88)),
             AppId::Office => (rgb(92, 142, 240), rgb(34, 76, 180)),
+            AppId::AI => (rgb(150, 120, 255), rgb(72, 46, 186)),
         }
     }
 }
@@ -489,6 +494,15 @@ fn draw_symbol(cv: &Canvas, app: AppId) {
             cv.round_rect(88, 128, 70, 8, 4, rgb(120, 140, 168), 230);
             cv.round_rect(88, 148, 82, 8, 4, rgb(120, 140, 168), 230);
             cv.round_rect(88, 168, 58, 8, 4, rgb(120, 140, 168), 230);
+        }
+        AppId::AI => {
+            cv.circle(128, 128, 66, rgb(255, 255, 255), 80);
+            cv.circle(128, 128, 58, w, 255);
+            cv.tri_shape(128, 82, 142, 116, 176, 128, rgb(255, 255, 255), 235);
+            cv.tri_shape(128, 174, 142, 140, 176, 128, rgb(255, 255, 255), 235);
+            cv.tri_shape(128, 82, 114, 116, 80, 128, rgb(255, 255, 255), 235);
+            cv.tri_shape(128, 174, 114, 140, 80, 128, rgb(255, 255, 255), 235);
+            cv.circle(128, 128, 16, rgb(255, 255, 255), 255);
         }
     }
 }

@@ -986,7 +986,7 @@ impl Ui {
                 action = AppAction::Screenshot;
                 continue;
             }
-            if scan == 0x3e {
+            if scan == 0x3e || scan == 0x0e {
                 action = AppAction::Close;
                 continue;
             }

@@ -1,6 +1,6 @@
 [package]
 name = "hywos"
-version = "1.1.6"
+version = "1.1.7"
 edition = "2021"
 authors = ["HYWOS Project"]
 description = "HYWOS - a 64-bit UEFI operating system written in Rust"

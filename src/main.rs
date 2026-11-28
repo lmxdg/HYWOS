@@ -2,6 +2,7 @@
 #![no_main]
 
 mod anim;
+mod auth;
 mod apps;
 mod audio;
 mod cjk;
@@ -42,7 +43,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.6 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
+        debug_print("HYWOS 1.1.7 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -149,13 +150,14 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         let _ = vols;
 
         debug_print("[stage] ui begin");
+        crate::auth::unlock(&g);
         kernel::ui_ready();
         let mut ui = ui::Ui::new(g);
         audio::chime();
         debug_print("[stage] ui loop");
         loop {
             ui.tick();
-            bs_stall(8_000);
+            bs_stall(3_000);
         }
     }
 }

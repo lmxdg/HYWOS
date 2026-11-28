@@ -34,7 +34,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.6 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.1.7 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -212,7 +212,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.6 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.1.7 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -520,6 +520,15 @@ pub struct Settings {
     pub update_msg: [u8; 96],
     pub update_msg_len: usize,
     pub update_ok: bool,
+    pub pwd_enabled: bool,
+    pub pwd_stage: u8,
+    pub pwd_buf: [u8; 24],
+    pub pwd_len: usize,
+    pub pwd_first: [u8; 24],
+    pub pwd_first_len: usize,
+    pub pwd_msg: [u8; 64],
+    pub pwd_msg_len: usize,
+    pub pwd_ok: bool,
 }
 
 pub struct Weather {
@@ -622,6 +631,15 @@ pub unsafe fn init_state(st: &mut AppState, id: AppId) {
     st.settings.release = crate::updater::Release::empty();
     st.settings.update_msg_len = 0;
     st.settings.update_ok = false;
+    st.settings.pwd_enabled = crate::auth::is_set();
+    st.settings.pwd_stage = 0;
+    st.settings.pwd_buf = [0; 24];
+    st.settings.pwd_len = 0;
+    st.settings.pwd_first = [0; 24];
+    st.settings.pwd_first_len = 0;
+    st.settings.pwd_msg = [0; 64];
+    st.settings.pwd_msg_len = 0;
+    st.settings.pwd_ok = false;
     st.weather.city = 0;
     st.weather.day = 0;
     st.weather.frame = 0;
@@ -866,9 +884,9 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
     let top = y + HEADER_H + 8;
     let side = 190;
     g.round_rect(x + 10, top, side, h - HEADER_H - 24, 12, rgb(235, 240, 249), 255);
-    let pages = ["显示", "权限", "软件更新", "关于本机"];
+    let pages = ["显示", "权限", "软件更新", "账户", "关于本机"];
     let mut i = 0;
-    while i < 4 {
+    while i < 5 {
         let py = top + 12 + i as i32 * 36;
         if s.page == i {
             g.round_rect(x + 18, py - 8, side - 16, 32, 9, rgb(206, 222, 250), 255);
@@ -923,7 +941,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.6 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.1.7 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -991,6 +1009,37 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
             if s.msg_len > 0 {
                 let m = core::str::from_utf8_unchecked(&s.msg[..s.msg_len]);
                 g.text(cx, cy + 404, m, if s.msg_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
+            }
+        }
+        3 => {
+            g.text(cx, cy, "账户与密码", rgb(36, 42, 58), 2);
+            let st_txt = if s.pwd_enabled { "已设置登录密码" } else { "未设置登录密码" };
+            g.text(cx, cy + 34, st_txt, if s.pwd_enabled { rgb(36, 160, 88) } else { rgb(132, 140, 158) }, 1);
+            let label = if s.pwd_enabled { "修改密码" } else { "设置密码" };
+            btn(g, cx, cy + 76, 180, 34, label, true);
+            if s.pwd_enabled {
+                btn(g, cx + 196, cy + 76, 140, 34, "清除密码", true);
+            }
+            if s.pwd_stage > 0 {
+                let hint = if s.pwd_stage == 1 { "输入新密码后按 Enter" } else { "再次输入密码确认" };
+                g.text(cx, cy + 134, hint, rgb(50, 56, 72), 1);
+                g.round_rect(cx, cy + 160, 320, 38, 8, rgb(236, 241, 250), 255);
+                g.round_rect_outline(cx, cy + 160, 320, 38, 8, rgb(160, 190, 235), 200);
+                let mut i = 0;
+                while i < s.pwd_len {
+                    g.circle(cx + 18 + i as i32 * 14, cy + 179, 4, rgb(60, 72, 96), 230);
+                    i += 1;
+                }
+                if (TICK / 16) % 2 == 0 {
+                    g.rect(cx + 18 + s.pwd_len as i32 * 14, cy + 170, 2, 18, rgb(60, 116, 240), 220);
+                }
+            } else {
+                g.text(cx, cy + 134, "密码保存在本机用户卷，使用 FNV-1a 哈希，不保存明文", rgb(140, 148, 168), 1);
+                g.text(cx, cy + 156, "设置后下次启动会显示锁屏，需输入密码解锁", rgb(140, 148, 168), 1);
+            }
+            if s.pwd_msg_len > 0 {
+                let m = core::str::from_utf8_unchecked(&s.pwd_msg[..s.pwd_msg_len]);
+                g.text(cx, cy + 218, m, if s.pwd_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
         }
         _ => draw_about(g, x + side + 16, top, w - side - 26, h - HEADER_H - 24),
@@ -1083,11 +1132,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.6", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.7", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.6（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.1.7（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1169,7 +1218,7 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             let side = 190;
             if lx > 10 && lx < 10 + side && ly > top {
                 let idx = ((ly - top - 12 + 7) / 34) as usize;
-                if idx < 4 { st.settings.page = idx; }
+                if idx < 5 { st.settings.page = idx; }
                 return AppAction::None;
             }
             if st.settings.page == 0 {
@@ -1212,6 +1261,31 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
                     let mut i = 0;
                     for c in msg.bytes() { st.settings.msg[i] = c; i += 1; }
                     st.settings.msg_ok = !b.is_null();
+                }
+            } else if st.settings.page == 3 {
+                let cx = side + 26;
+                let by = top + 82;
+                if ly > by && ly < by + 34 {
+                    if lx > cx && lx < cx + 180 {
+                        st.settings.pwd_stage = 1;
+                        st.settings.pwd_len = 0;
+                        st.settings.pwd_first_len = 0;
+                        st.settings.pwd_msg_len = 0;
+                        st.settings.pwd_ok = true;
+                        return AppAction::None;
+                    }
+                    if st.settings.pwd_enabled && lx > cx + 196 && lx < cx + 336 {
+                        crate::auth::clear_password();
+                        st.settings.pwd_enabled = false;
+                        st.settings.pwd_stage = 0;
+                        st.settings.pwd_len = 0;
+                        let msg = "密码已清除";
+                        st.settings.pwd_msg_len = msg.len();
+                        let mut i = 0;
+                        for c in msg.bytes() { st.settings.pwd_msg[i] = c; i += 1; }
+                        st.settings.pwd_ok = true;
+                        return AppAction::None;
+                    }
                 }
             }
         }
@@ -1332,11 +1406,80 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
         return AppAction::None;
     }
     if id == AppId::Settings {
+        if st.settings.page == 3 && st.settings.pwd_stage > 0 {
+            if ch == 13 {
+                if st.settings.pwd_stage == 1 {
+                    let n = st.settings.pwd_len;
+                    st.settings.pwd_first[..n].copy_from_slice(&st.settings.pwd_buf[..n]);
+                    st.settings.pwd_first_len = n;
+                    st.settings.pwd_len = 0;
+                    st.settings.pwd_stage = 2;
+                    st.settings.pwd_msg_len = 0;
+                } else {
+                    let n = st.settings.pwd_len;
+                    let m = st.settings.pwd_first_len;
+                    let same = n > 0 && n == m && st.settings.pwd_buf[..n] == st.settings.pwd_first[..m];
+                    st.settings.pwd_stage = 0;
+                    st.settings.pwd_len = 0;
+                    st.settings.pwd_first_len = 0;
+                    if same && crate::auth::set_password(&st.settings.pwd_first[..m]) {
+                        st.settings.pwd_enabled = true;
+                        let msg = "密码已设置，下次启动需要解锁";
+                        st.settings.pwd_msg_len = msg.len();
+                        let mut i = 0;
+                        for c in msg.bytes() { st.settings.pwd_msg[i] = c; i += 1; }
+                        st.settings.pwd_ok = true;
+                    } else {
+                        let msg = "两次输入不一致或保存失败";
+                        st.settings.pwd_msg_len = msg.len();
+                        let mut i = 0;
+                        for c in msg.bytes() { st.settings.pwd_msg[i] = c; i += 1; }
+                        st.settings.pwd_ok = false;
+                    }
+                }
+                return AppAction::None;
+            }
+            if ch == 8 || scan == 0x08 {
+                if st.settings.pwd_len > 0 { st.settings.pwd_len -= 1; }
+                return AppAction::None;
+            }
+            if scan == 0x17 {
+                st.settings.pwd_stage = 0;
+                st.settings.pwd_len = 0;
+                st.settings.pwd_first_len = 0;
+                return AppAction::None;
+            }
+            if ch >= 32 && ch < 127 && st.settings.pwd_len < 24 {
+                st.settings.pwd_buf[st.settings.pwd_len] = ch as u8;
+                st.settings.pwd_len += 1;
+            }
+            return AppAction::None;
+        }
+        if st.settings.page == 3 && st.settings.pwd_stage == 0 {
+            if ch == b'p' as u16 || ch == b'P' as u16 {
+                st.settings.pwd_stage = 1;
+                st.settings.pwd_len = 0;
+                st.settings.pwd_first_len = 0;
+                st.settings.pwd_msg_len = 0;
+                st.settings.pwd_ok = true;
+                return AppAction::None;
+            }
+            if (ch == b'x' as u16 || ch == b'X' as u16) && st.settings.pwd_enabled {
+                crate::auth::clear_password();
+                st.settings.pwd_enabled = false;
+                let msg = "密码已清除";
+                st.settings.pwd_msg_len = msg.len();
+                let mut i = 0;
+                for c in msg.bytes() { st.settings.pwd_msg[i] = c; i += 1; }
+                st.settings.pwd_ok = true;
+                return AppAction::None;
+            }
+        }
         if scan == 0x04 && st.settings.page > 0 {
             st.settings.page -= 1;
             return AppAction::None;
         }
-        if scan == 0x03 && st.settings.page < 3 {
+        if scan == 0x03 && st.settings.page < 4 {
             st.settings.page += 1;
             return AppAction::None;
         }
@@ -1375,7 +1518,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.6");
+            set_update_msg(s, true, "已是最新版本 1.1.7");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

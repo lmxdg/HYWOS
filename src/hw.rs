@@ -127,10 +127,10 @@ pub unsafe fn pointer_present() -> bool {
     !POINTER.is_null()
 }
 
-const POINTER_GAIN_NUM: i32 = 12;
+const POINTER_GAIN_NUM: i32 = 18;
 const POINTER_GAIN_DEN: i32 = 5;
 
-/// 相对指针增益：小幅移动保留精细控制，常规移动约 2.4 倍，修复指针移速过慢。
+/// 相对指针增益：小幅移动保留精细控制，常规移动约 3.6 倍，修复指针移速过慢。
 fn pointer_gain(v: i32) -> i32 {
     let a = if v < 0 { -v } else { v };
     let num = if a <= 3 { POINTER_GAIN_NUM - 2 } else { POINTER_GAIN_NUM };
@@ -146,6 +146,8 @@ pub struct InputState {
     pub prev_right: bool,
     pub clicked: bool,
     pub right_clicked: bool,
+    pub left_pending: bool,
+    pub right_pending: bool,
     pub down: bool,
     pub moved: bool,
     pub scroll: i32,
@@ -162,6 +164,8 @@ impl InputState {
             prev_right: false,
             clicked: false,
             right_clicked: false,
+            left_pending: false,
+            right_pending: false,
             down: false,
             moved: false,
             scroll: 0,
@@ -192,6 +196,8 @@ impl InputState {
                 self.y = ay;
                 self.moved = true;
             }
+            let latch = crate::usbhid::take_click_latch();
+            self.press_latch(latch);
             self.left = btn & 1 != 0;
             self.right = btn & 2 != 0;
             self.finish_buttons();
@@ -230,6 +236,8 @@ impl InputState {
             return;
         }
         if let Some((dx, dy, btn, moved)) = crate::usbhid::rel_state() {
+            let latch = crate::usbhid::take_click_latch();
+            self.press_latch(latch);
             if moved {
                 self.x += pointer_gain(dx);
                 self.y += pointer_gain(dy);
@@ -246,12 +254,14 @@ impl InputState {
         }
         if crate::ps2::mouse_ok() {
             let (dx, dy, btn, moved) = crate::ps2::take_mouse();
+            let latch = crate::ps2::take_click_latch();
+            self.press_latch(latch);
             let mut ax = pointer_gain(dx);
             let mut ay = pointer_gain(dy);
-            if ax > 160 { ax = 160; }
-            if ax < -160 { ax = -160; }
-            if ay > 160 { ay = 160; }
-            if ay < -160 { ay = -160; }
+            if ax > 240 { ax = 240; }
+            if ax < -240 { ax = -240; }
+            if ay > 240 { ay = 240; }
+            if ay < -240 { ay = -240; }
             if moved {
                 self.x += ax;
                 self.y += ay;
@@ -267,9 +277,19 @@ impl InputState {
         }
     }
 
+    fn press_latch(&mut self, btn: u8) {
+        if btn & 1 != 0 { self.left_pending = true; }
+        if btn & 2 != 0 { self.right_pending = true; }
+    }
+
     fn finish_buttons(&mut self) {
-        if self.left && !self.prev_left { self.clicked = true; }
-        if self.right && !self.prev_right { self.right_clicked = true; }
+        // 锁存按下边沿：即使按下与释放在同一轮询间隔内，也能产生一次点击。
+        if self.left && !self.prev_left { self.left_pending = true; }
+        if self.right && !self.prev_right { self.right_pending = true; }
+        self.clicked = self.left_pending;
+        self.right_clicked = self.right_pending;
+        self.left_pending = false;
+        self.right_pending = false;
         self.prev_left = self.left;
         self.prev_right = self.right;
         self.down = self.left;

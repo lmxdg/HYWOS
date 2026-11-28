@@ -103,6 +103,7 @@ static mut MOU: Mou = Mou {
 };
 
 static mut ABS_LAST: (i32, i32) = (-1, -1);
+static mut BTN_LATCH: u8 = 0;
 
 const DIR_IN: u32 = 0;
 const DIR_NONE: u32 = 2;
@@ -394,6 +395,12 @@ pub unsafe fn init(need_kbd: bool, need_mouse: bool) -> bool {
 
 static mut POLL_TICK: u32 = 0;
 
+unsafe fn update_btn(m: &mut Mou, nb: u8) {
+    let pressed = nb & !m.btn;
+    if pressed != 0 { BTN_LATCH |= pressed; }
+    m.btn = nb;
+}
+
 pub unsafe fn poll(w: i32, h: i32) {
     POLL_TICK = POLL_TICK.wrapping_add(1);
     let k = &mut *core::ptr::addr_of_mut!(KBD);
@@ -412,7 +419,7 @@ pub unsafe fn poll(w: i32, h: i32) {
                 let x = buf[1] as i32 | ((buf[2] as i32) << 8);
                 let y = buf[3] as i32 | ((buf[4] as i32) << 8);
                 if !m.seen && x == 0 && y == 0 {
-                    m.btn = buf[0] & 0x07;
+                    update_btn(m, buf[0] & 0x07);
                     return;
                 }
                 m.seen = true;
@@ -432,7 +439,7 @@ pub unsafe fn poll(w: i32, h: i32) {
                 if m.ry > 2000 { m.ry = 2000; }
                 if m.ry < -2000 { m.ry = -2000; }
             }
-            m.btn = buf[0] & 0x07;
+            update_btn(m, buf[0] & 0x07);
         }
     }
 }
@@ -455,6 +462,12 @@ pub unsafe fn rel_state() -> Option<(i32, i32, u8, bool)> {
     m.rx = 0;
     m.ry = 0;
     Some((dx, dy, b, moved))
+}
+
+pub unsafe fn take_click_latch() -> u8 {
+    let l = BTN_LATCH;
+    BTN_LATCH = 0;
+    l
 }
 
 pub unsafe fn take_key() -> Option<(u16, u16)> {

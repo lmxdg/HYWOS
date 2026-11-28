@@ -14,6 +14,7 @@ static mut QLEN: usize = 0;
 static mut MX: i32 = 0;
 static mut MY: i32 = 0;
 static mut BTN: u8 = 0;
+static mut BTN_LATCH: u8 = 0;
 static mut PACKET: [u8; 4] = [0; 4];
 static mut PI: usize = 0;
 static mut PACKET_LEN: usize = 3;
@@ -122,6 +123,7 @@ pub unsafe fn init_mouse() -> bool {
     MX = 0;
     MY = 0;
     BTN = 0;
+    BTN_LATCH = 0;
     MOUSE_OK = true;
     true
 }
@@ -268,7 +270,10 @@ unsafe fn mouse_byte(b: u8) {
         if dy < -127 { dy = -127; }
         MX += dx;
         MY -= dy;
-        BTN = PACKET[0] & 0x07;
+        let nb = PACKET[0] & 0x07;
+        let pressed = nb & !BTN;
+        if pressed != 0 { BTN_LATCH |= pressed; }
+        BTN = nb;
     }
 }
 
@@ -326,4 +331,10 @@ pub unsafe fn take_mouse() -> (i32, i32, u8, bool) {
     MX = 0;
     MY = 0;
     (dx, dy, b, moved)
+}
+
+pub unsafe fn take_click_latch() -> u8 {
+    let l = BTN_LATCH;
+    BTN_LATCH = 0;
+    l
 }

@@ -4,6 +4,7 @@ use crate::efi::*;
 use crate::port::*;
 
 static mut AC_OK: bool = false;
+static mut VOLUME: u8 = 80;
 static mut NAM: u16 = 0;
 static mut NABM: u16 = 0;
 static mut PCM: [u8; 96000] = [0; 96000];
@@ -44,14 +45,28 @@ pub unsafe fn init() -> bool {
         i += 1;
     }
     outl(NABM + 0x00, 0x0000_0000);
-    outw(NAM + 0x02, 0x0000);
+    let att = (100 - VOLUME as u32) * 31 / 100;
+    outw(NAM + 0x02, ((att << 8) | att) as u16);
     outw(NAM + 0x18, 0x0000);
     outw(NAM + 0x2C, 48000);
     outw(NAM + 0x2E, 48000);
     outb(NABM + 0x1B, 0x00);
     AC_OK = true;
     serial_print("[audio] AC'97 ready");
+    set_volume(VOLUME);
     true
+}
+
+pub fn volume() -> u8 {
+    unsafe { VOLUME }
+}
+
+pub unsafe fn set_volume(v: u8) {
+    VOLUME = if v > 100 { 100 } else { v };
+    if AC_OK {
+        let att = (100 - VOLUME as u32) * 31 / 100;
+        outw(NAM + 0x02, ((att << 8) | att) as u16);
+    }
 }
 
 unsafe fn beep(freq: u32, ms: u32) {

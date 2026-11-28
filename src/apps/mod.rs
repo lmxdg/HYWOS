@@ -36,7 +36,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.1.8 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.2.0 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -214,7 +214,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.1.8 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.2.0 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -920,9 +920,9 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
     let top = y + HEADER_H + 8;
     let side = 190;
     g.round_rect(x + 10, top, side, h - HEADER_H - 24, 12, rgb(235, 240, 249), 255);
-    let pages = ["显示", "权限", "软件更新", "账户", "关于本机"];
+    let pages = ["显示", "权限", "软件更新", "账户", "系统", "关于本机"];
     let mut i = 0;
-    while i < 5 {
+    while i < 6 {
         let py = top + 12 + i as i32 * 36;
         if s.page == i {
             g.round_rect(x + 18, py - 8, side - 16, 32, 9, rgb(206, 222, 250), 255);
@@ -992,7 +992,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.1.8 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.2.0 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1093,6 +1093,37 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
                 g.text(cx, cy + 218, m, if s.pwd_ok { rgb(36, 160, 88) } else { rgb(192, 72, 68) }, 1);
             }
         }
+        4 => {
+            g.text(cx, cy, "系统与显示", rgb(36, 42, 58), 2);
+            g.text(cx, cy + 34, "音量", rgb(50, 56, 72), 1);
+            let mut vb = [0u8; 8];
+            let mut vl = hw::num2(&mut vb, crate::display::volume(), 1);
+            vb[vl] = b'%'; vl += 1;
+            g.text(cx + 120, cy + 34, core::str::from_utf8_unchecked(&vb[..vl]), rgb(50, 56, 72), 1);
+            btn(g, cx + 250, cy + 26, 50, 30, "-", true);
+            btn(g, cx + 308, cy + 26, 50, 30, "+", true);
+            g.text(cx, cy + 76, "亮度", rgb(50, 56, 72), 1);
+            let mut bb = [0u8; 8];
+            let mut bl = hw::num2(&mut bb, crate::display::brightness(), 1);
+            bb[bl] = b'%'; bl += 1;
+            g.text(cx + 120, cy + 76, core::str::from_utf8_unchecked(&bb[..bl]), rgb(50, 56, 72), 1);
+            btn(g, cx + 250, cy + 68, 50, 30, "-", true);
+            btn(g, cx + 308, cy + 68, 50, 30, "+", true);
+            g.text(cx, cy + 118, "显示缩放", rgb(50, 56, 72), 1);
+            let sc = crate::display::scale();
+            btn(g, cx, cy + 136, 110, 30, "100%", sc == 100);
+            btn(g, cx + 120, cy + 136, 110, 30, "125%", sc == 125);
+            btn(g, cx + 240, cy + 136, 110, 30, "150%", sc != 100 && sc != 125);
+            g.text(cx, cy + 176, "分辨率（重启生效）", rgb(50, 56, 72), 1);
+            let cw = crate::display::width();
+            let chh = crate::display::height();
+            btn(g, cx, cy + 194, 140, 30, "1024x768", cw == 1024 && chh == 768);
+            btn(g, cx + 150, cy + 194, 140, 30, "1280x800", cw == 1280 && chh == 800);
+            btn(g, cx + 300, cy + 194, 140, 30, "1920x1080", cw == 1920 && chh == 1080);
+            btn(g, cx, cy + 240, 110, 34, "重启", true);
+            btn(g, cx + 126, cy + 240, 110, 34, "关机", true);
+            g.text(cx, cy + 292, "音量/亮度立即生效；缩放与分辨率重启后生效", rgb(140, 148, 168), 1);
+        }
         _ => draw_about(g, x + side + 16, top, w - side - 26, h - HEADER_H - 24),
     }
 }
@@ -1183,11 +1214,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.1.8", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.0", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.1.8（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.2.0（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1273,7 +1304,7 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
             let side = 190;
             if lx > 10 && lx < 10 + side && ly > top {
                 let idx = ((ly - top - 12 + 7) / 34) as usize;
-                if idx < 5 { st.settings.page = idx; }
+                if idx < 6 { st.settings.page = idx; }
                 return AppAction::None;
             }
             if st.settings.page == 0 {
@@ -1350,6 +1381,48 @@ pub unsafe fn click(st: &mut AppState, id: AppId, mx: i32, my: i32, x: i32, y: i
                         for c in msg.bytes() { st.settings.pwd_msg[i] = c; i += 1; }
                         st.settings.pwd_ok = true;
                         return AppAction::None;
+                    }
+                }
+            } else if st.settings.page == 4 {
+                let cx = side + 26;
+                if ly > top + 32 && ly < top + 62 {
+                    if lx > cx + 250 && lx < cx + 300 {
+                        crate::display::set_volume(crate::display::volume().saturating_sub(10));
+                        return AppAction::None;
+                    }
+                    if lx > cx + 308 && lx < cx + 358 {
+                        crate::display::set_volume((crate::display::volume() + 10).min(100));
+                        return AppAction::None;
+                    }
+                }
+                if ly > top + 74 && ly < top + 104 {
+                    if lx > cx + 250 && lx < cx + 300 {
+                        crate::display::set_brightness(crate::display::brightness().saturating_sub(10));
+                        return AppAction::None;
+                    }
+                    if lx > cx + 308 && lx < cx + 358 {
+                        crate::display::set_brightness((crate::display::brightness() + 10).min(100));
+                        return AppAction::None;
+                    }
+                }
+                if ly > top + 142 && ly < top + 172 {
+                    let i = ((lx - cx) / 120).clamp(0, 2);
+                    let v = [100u32, 125, 150][i as usize];
+                    crate::display::set_scale(v);
+                    return AppAction::None;
+                }
+                if ly > top + 200 && ly < top + 230 {
+                    let i = ((lx - cx) / 150).clamp(0, 2);
+                    let (w, h) = [(1024u32, 768u32), (1280, 800), (1920, 1080)][i as usize];
+                    crate::display::set_resolution(w, h);
+                    return AppAction::None;
+                }
+                if ly > top + 246 && ly < top + 280 {
+                    if lx > cx && lx < cx + 110 {
+                        crate::power::reboot();
+                    }
+                    if lx > cx + 126 && lx < cx + 236 {
+                        crate::power::shutdown();
                     }
                 }
             }
@@ -1551,7 +1624,7 @@ pub unsafe fn key(st: &mut AppState, id: AppId, scan: u16, ch: u16) -> AppAction
             st.settings.page -= 1;
             return AppAction::None;
         }
-        if scan == 0x03 && st.settings.page < 4 {
+        if scan == 0x03 && st.settings.page < 5 {
             st.settings.page += 1;
             return AppAction::None;
         }
@@ -1590,7 +1663,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.1.8");
+            set_update_msg(s, true, "已是最新版本 1.2.0");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

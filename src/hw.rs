@@ -323,23 +323,40 @@ pub unsafe fn print_sig(p: *const u8) {
     serial_print(core::str::from_utf8_unchecked(&b));
 }
 
+static mut FADT_PTR: *const u8 = core::ptr::null();
+
 unsafe fn parse_root(root: *const u8, is_x: bool) -> bool {
     let len = read_u32(root.add(4)) as usize;
     if len < 36 { return false; }
     let esz = if is_x { 8 } else { 4 };
     let n = (len - 36) / esz;
     let mut k = 0;
+    let mut apic = false;
     while k < n {
         let entry = root.add(36 + k * esz);
         let tbl = if is_x { read_u64(entry) as *const u8 } else { read_u32(entry) as *const u8 };
+        if !tbl.is_null() && sig_eq(tbl, b"FACP") {
+            FADT_PTR = tbl;
+        }
         if !tbl.is_null() && sig_eq(tbl, b"APIC") {
             CPU.acpi_ok = true;
             parse_madt(tbl);
-            return true;
+            apic = true;
         }
         k += 1;
     }
-    false
+    apic
+}
+
+pub unsafe fn fadt_present() -> bool {
+    !FADT_PTR.is_null()
+}
+
+pub unsafe fn fadt_pm1a_cnt() -> u16 {
+    if FADT_PTR.is_null() { return 0; }
+    let len = read_u32(FADT_PTR.add(4)) as usize;
+    if len < 90 { return 0; }
+    read_u32(FADT_PTR.add(64)) as u16
 }
 
 #[cfg(target_arch = "x86_64")]

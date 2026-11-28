@@ -1,6 +1,5 @@
-; HYWOS 1.1.6 BIOS 兼容引导扇区（NASM, 16 位实模式）
-; 由 El Torito 以 no-emulation 方式加载到 0x7C00，显示启动画面与旋转加载圈。
-; 完整图形桌面依赖 UEFI；BIOS 路径提供兼容引导与自检画面。
+; HYWOS 1.2.0 BIOS 兼容引导扇区（NASM, 16 位实模式）
+; 有限时加载动画后给出明确提示，不再无限卡在 Loading。
 
 [org 0x7c00]
 [bits 16]
@@ -22,7 +21,6 @@ start:
 
     xor cx, cx
 .spin:
-    ; 光标定位到第 9 行、第 30 列
     mov ah, 0x02
     mov bh, 0
     mov dh, 5
@@ -41,12 +39,56 @@ start:
     pop cx
 
     inc cx
+    cmp cx, 12
+    jae .done
 
     mov dx, 0x3000
 .delay:
     dec dx
     jnz .delay
     jmp .spin
+
+.done:
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 5
+    mov dl, 0
+    int 0x10
+    mov si, blank
+    call puts
+
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 7
+    mov dl, 0
+    int 0x10
+    mov si, notice
+    call puts
+
+.wait:
+    mov ah, 0x00
+    int 0x16
+    cmp al, 'r'
+    je .reboot
+    cmp al, 'R'
+    je .reboot
+    cmp al, 'c'
+    je .info
+    cmp al, 'C'
+    je .info
+    jmp .wait
+
+.reboot:
+    mov si, rebootmsg
+    call puts
+    mov al, 0xFE
+    out 0x64, al
+    jmp .wait
+
+.info:
+    mov si, infomsg
+    call puts
+    jmp .wait
 
 puts:
     push ax
@@ -65,11 +107,25 @@ puts:
     ret
 
 banner:
-    db "HYWOS 1.1.6  BIOS Boot", 13, 10
+    db "HYWOS 1.2.0  BIOS Boot", 13, 10
     db "Hybrid kernel: C/C++ core + Rust UI", 13, 10
     db "Dual boot: BIOS compatibility mode", 13, 10
     db "Use UEFI for the full graphical desktop.", 13, 10, 13, 10
     db "Loading ", 0
+
+blank:
+    db "        ", 0
+
+notice:
+    db "BIOS compatibility boot finished.", 13, 10
+    db "Full desktop requires UEFI boot.", 13, 10
+    db "Press R to reboot, C for help.", 13, 10, 0
+
+infomsg:
+    db "BIOS stage: El Torito compatibility loader.", 13, 10, 0
+
+rebootmsg:
+    db "Rebooting...", 13, 10, 0
 
 frames:
     db "|/-\"

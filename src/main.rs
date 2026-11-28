@@ -14,6 +14,8 @@ mod logo;
 mod net;
 mod netstack;
 mod port;
+mod power;
+mod display;
 mod ps2;
 mod ckernel;
 mod kernel;
@@ -43,7 +45,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         BS = (*ST).boot_services;
         installer::set_image(image);
-        debug_print("HYWOS 1.1.8 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
+        debug_print("HYWOS 1.2.0 (x86_64 UEFI, hybrid C/C++ kernel + Rust UI)");
         let _ = version::VERSION;
         hw::firmware_vendor();
         hw::cache_time();
@@ -135,6 +137,7 @@ pub extern "efiapi" fn efi_main(image: Handle, systab: *mut SystemTable) -> Stat
         }
         serial_print("[input] firmware input kept in control");
         audio::init();
+        crate::display::load();
         kernel::init();
         debug_print("[stage] pointer done");
         hw::cache_time();

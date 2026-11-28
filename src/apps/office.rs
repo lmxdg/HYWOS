@@ -35,6 +35,10 @@ pub struct OfficeState {
     pub msg: [u8; 96],
     pub msg_len: usize,
     pub msg_ok: bool,
+    pub splash_frames: u8,
+    pub editing: bool,
+    pub path: [u8; 128],
+    pub path_len: usize,
 }
 
 fn lower(c: u8) -> u8 {
@@ -163,6 +167,9 @@ impl OfficeState {
             }
         };
         let kind = kind_of(&self.name_buf[idx][..nl]);
+        self.path_len = if l < 128 { l } else { 127 };
+        let mut pi = 0;
+        while pi < self.path_len { self.path[pi] = path[pi]; pi += 1; }
         self.kind = kind;
         self.text_len = 0;
         self.scroll = 0;
@@ -189,6 +196,8 @@ impl OfficeState {
             self.opened = false;
         } else {
             self.opened = true;
+            self.splash_frames = 14;
+            self.editing = false;
             let mut nm = [0u8; 80];
             let mut k = 0;
             while k < nl { nm[k] = self.name_buf[idx][k]; k += 1; }
@@ -198,6 +207,35 @@ impl OfficeState {
     }
 
     pub unsafe fn key(&mut self, scan: u16, ch: u16) {
+        if self.editing {
+            if scan == 0x17 {
+                self.editing = false;
+                self.set_msg(true, "已退出编辑，文件未自动保存");
+                return;
+            }
+            if ch == 19 {
+                self.save();
+                return;
+            }
+            if ch == 8 {
+                if self.text_len > 0 { self.text_len -= 1; }
+                return;
+            }
+            if ch == 13 {
+                if self.text_len < self.text.len() { self.text[self.text_len] = b'\n'; self.text_len += 1; }
+                return;
+            }
+            if ch >= 32 && ch < 127 && self.text_len < self.text.len() {
+                self.text[self.text_len] = ch as u8;
+                self.text_len += 1;
+            }
+            return;
+        }
+        if self.opened && self.kind == KIND_TXT && (ch == b'e' as u16 || ch == b'E' as u16) {
+            self.editing = true;
+            self.set_msg(true, "编辑中：Ctrl+S 保存，Esc 退出");
+            return;
+        }
         if (scan == 0x50 || scan == 0x02) && self.sel + 1 < self.count {
             self.sel += 1;
         } else if (scan == 0x48 || scan == 0x01) && self.sel > 0 {
@@ -208,6 +246,19 @@ impl OfficeState {
             if self.scroll > 0 { self.scroll -= 1; }
         } else if scan == 0x51 || scan == 0x0a {
             self.scroll += 1;
+        }
+    }
+
+    unsafe fn save(&mut self) {
+        if self.path_len == 0 {
+            self.set_msg(false, "没有可保存的文件路径");
+            return;
+        }
+        let p = core::str::from_utf8_unchecked(&self.path[..self.path_len]);
+        if fs::write_file(fs::usr_vol(), p, &self.text[..self.text_len]) {
+            self.set_msg(true, "已保存到原文件");
+        } else {
+            self.set_msg(false, "保存失败");
         }
     }
 }
@@ -685,7 +736,33 @@ fn char_w(cp: u32) -> i32 {
     if cp < 128 { 8 } else { 16 }
 }
 
+unsafe fn draw_splash(g: &Gfx, x: i32, y: i32, w: i32, h: i32, fr: u8) {
+    g.round_rect(x, y, w, h, 18, rgb(14, 20, 34), 255);
+    let cx = x + w / 2;
+    let cy = y + h / 2;
+    g.blit_rgba(cx - 48, cy - 96, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
+    g.text_center(cx, cy + 16, "HYWOffice", rgb(226, 240, 255), 2);
+    g.text_center(cx, cy + 48, "正在打开文档…", rgb(150, 168, 196), 1);
+    let t = (14 - fr) as f32 * 0.5;
+    let mut i = 0;
+    while i < 8 {
+        let a = t + i as f32 * 0.35;
+        let a2 = a + 0.2;
+        let x0 = cx + (crate::gfx::cosf(a) * 14.0) as i32;
+        let y0 = cy + 80 + (crate::gfx::sinf(a) * 14.0) as i32;
+        let x1 = cx + (crate::gfx::cosf(a2) * 14.0) as i32;
+        let y1 = cy + 80 + (crate::gfx::sinf(a2) * 14.0) as i32;
+        g.line(x0, y0, x1, y1, rgb(120, 200, 255), (40 + i * 20) as u8);
+        i += 1;
+    }
+}
+
 pub unsafe fn draw(s: &mut OfficeState, g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
+    if s.splash_frames > 0 {
+        s.splash_frames -= 1;
+        draw_splash(g, x, y, w, h, s.splash_frames);
+        return;
+    }
     let top = y + 40 + 8;
     let list_w = 220i32;
     g.round_rect(x + 10, top, list_w, h - 40 - 24, 10, rgb(238, 242, 250), 255);

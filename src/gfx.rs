@@ -71,6 +71,15 @@ pub struct Gfx {
 
 static mut SCR_W: i32 = 1024;
 static mut SCR_H: i32 = 768;
+static mut BRIGHTNESS: u8 = 100;
+
+pub fn set_brightness(v: u8) {
+    unsafe { BRIGHTNESS = if v > 100 { 100 } else { v }; }
+}
+
+pub fn brightness() -> u8 {
+    unsafe { BRIGHTNESS }
+}
 
 impl Gfx {
     pub fn screen_w() -> i32 {
@@ -182,8 +191,19 @@ impl Gfx {
     }
 
     #[inline(always)]
+    fn dim_color(&self, c: u32) -> u32 {
+        let b = unsafe { BRIGHTNESS };
+        if b >= 100 { return c; }
+        let r = ((c >> 16) & 0xff) * b as u32 / 100;
+        let g = ((c >> 8) & 0xff) * b as u32 / 100;
+        let bl = (c & 0xff) * b as u32 / 100;
+        (r << 16) | (g << 8) | bl
+    }
+
+    #[inline(always)]
     pub fn put(&self, x: i32, y: i32, c: u32, a: u8) {
         if a == 0 || x < 0 || y < 0 { return; }
+        let c = self.dim_color(c);
         let ux = x as usize;
         let uy = y as usize;
         if ux >= self.w || uy >= self.h { return; }
@@ -229,7 +249,7 @@ impl Gfx {
         let y1 = if y + h > self.h as i32 { self.h as i32 } else { y + h };
         if x1 <= x0 || y1 <= y0 { return; }
         if a >= 250 {
-            let packed = self.pack(c);
+            let packed = self.pack(self.dim_color(c));
             let mut yy = y0;
             while yy < y1 {
                 unsafe {

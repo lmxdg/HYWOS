@@ -172,7 +172,7 @@ unsafe fn http_get_once(http: *mut HttpProtocol, url: &str, method: u32, auth: &
         return Err(ERR_REQUEST);
     }
     let mut name1 = *b"User-Agent\0";
-    let mut val1 = *b"HYWOS-1.2.4\0";
+    let mut val1 = *b"HYWOS-1.2.5\0";
     let mut name2 = *b"Accept\0";
     let mut val2 = *b"application/json\0";
     let mut name3 = *b"Content-Type\0";

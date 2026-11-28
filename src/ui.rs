@@ -5,7 +5,7 @@ use crate::gfx::{rgb, text_width, Gfx};
 use crate::hw;
 use crate::icon::{icon, AppId};
 
-pub const TB_H: i32 = 48;
+pub const TB_H: i32 = 44;
 
 pub const TB_APPS: [AppId; 6] = [
     AppId::Terminal,
@@ -285,27 +285,22 @@ impl Ui {
     }
 
     fn tb_group(&self) -> (i32, i32, i32) {
-        let (_, rn) = self.run_slots();
-        let n = 1 + TB_APPS.len() as i32 + rn as i32;
-        let iw = 40i32;
-        let gap = 4i32;
-        let gw = n * iw + (n - 1) * gap;
-        let x0 = (self.w() - gw) / 2;
-        (x0, iw, gap)
+        (250, 40, 4)
     }
 
     fn tb_slot_at(&self, mx: i32, my: i32) -> i32 {
         let h = self.h();
         if my < h - TB_H { return -2; }
         if mx >= self.w() - 8 { return -3; }
+        if mx >= 4 && mx < 52 { return 0; }
         let (x0, iw, gap) = self.tb_group();
+        let (_, rn) = self.run_slots();
+        let total = TB_APPS.len() as i32 + rn as i32;
         if mx < x0 { return -1; }
         let rel = mx - x0;
         let slot = rel / (iw + gap);
         if rel - slot * (iw + gap) >= iw { return -1; }
-        let (_, rn) = self.run_slots();
-        let total = 1 + TB_APPS.len() as i32 + rn as i32;
-        if slot >= 0 && slot < total { slot } else { -1 }
+        if slot >= 0 && slot < total { 1 + slot } else { -1 }
     }
 
     fn draw_start_mark(&self, cx: i32, cy: i32, sz: i32) {
@@ -325,47 +320,47 @@ impl Ui {
         let y0 = h - TB_H;
         g.rect(0, y0, w, TB_H, rgb(28, 28, 32), 246);
         g.rect(0, y0, w, 1, rgb(255, 255, 255), 34);
-        let (x0, iw, gap) = self.tb_group();
         let cy = y0 + TB_H / 2;
+        if self.hover == 0 {
+            g.round_rect(4, y0 + 4, 44, TB_H - 8, 4, rgb(255, 255, 255), 28);
+        }
+        self.draw_start_mark(26, cy, 18);
+        g.round_rect(58, y0 + 6, 180, TB_H - 12, 4, rgb(45, 45, 50), 255);
+        g.ring(74, cy, 6, 1, rgb(170, 180, 196), 220);
+        g.line(78, cy + 4, 82, cy + 8, rgb(170, 180, 196), 220);
+        g.text(88, cy - 7, "搜索", rgb(150, 160, 178), 1);
+
+        let (x0, iw, gap) = self.tb_group();
         let (runs, rn) = self.run_slots();
         let wins = &*core::ptr::addr_of!(WINS);
+        let total = TB_APPS.len() as i32 + rn as i32;
         let mut i = 0;
-        while i < 1 + TB_APPS.len() as i32 + rn as i32 {
+        while i < total {
+            let slot = 1 + i;
             let x = x0 + i * (iw + gap);
-            let hovered = self.hover == i;
-            if hovered { g.round_rect(x, y0 + 4, iw, TB_H - 8, 6, rgb(255, 255, 255), 28); }
+            if self.hover == slot {
+                g.round_rect(x, y0 + 4, iw, TB_H - 8, 4, rgb(255, 255, 255), 28);
+            }
             let ix = x + (iw - 32) / 2;
             let iy = cy - 16;
-            let mut running = false;
-            if i == 0 {
-                self.draw_start_mark(x + iw / 2, cy, 18);
-            } else if i <= TB_APPS.len() as i32 {
-                let id = TB_APPS[(i - 1) as usize];
-                g.blit_rgba(ix, iy, 32, 32, icon(id), 64, 64);
+            let mut run_win = usize::MAX;
+            let id = if i < TB_APPS.len() as i32 {
+                let id = TB_APPS[i as usize];
                 let mut k = 0;
                 while k < 3 {
-                    if wins[k].open && wins[k].id == id { running = true; }
+                    if wins[k].open && wins[k].id == id { run_win = k; }
                     k += 1;
                 }
+                id
             } else {
-                let idx = runs[(i - 1 - TB_APPS.len() as i32) as usize];
-                if idx >= 0 {
-                    let wv = &wins[idx as usize];
-                    g.blit_rgba(ix, iy, 32, 32, icon(wv.id), 64, 64);
-                    running = true;
-                }
-            }
-            if i > 0 && running {
-                let focused = FOCUS == (if i <= TB_APPS.len() as i32 {
-                    let id = TB_APPS[(i - 1) as usize];
-                    let mut f = 99usize;
-                    let mut k = 0;
-                    while k < 3 { if wins[k].open && wins[k].id == id { f = k; } k += 1; }
-                    f
-                } else {
-                    runs[(i - 1 - TB_APPS.len() as i32) as usize] as usize
-                });
-                g.round_rect(x + iw / 2 - 7, y0 + TB_H - 5, 14, 3, 0, rgb(96, 186, 255), if focused { 255 } else { 140 });
+                let idx = runs[(i - TB_APPS.len() as i32) as usize] as usize;
+                run_win = idx;
+                if idx < 3 { wins[idx].id } else { AppId::Terminal }
+            };
+            g.blit_rgba(ix, iy, 32, 32, icon(id), 64, 64);
+            if run_win != usize::MAX && wins[run_win].open {
+                let focused = FOCUS == run_win && !wins[run_win].min;
+                g.round_rect(x + iw / 2 - 7, y0 + TB_H - 5, 14, 3, 0, rgb(96, 186, 255), if focused { 255 } else { 130 });
             }
             i += 1;
         }
@@ -400,9 +395,9 @@ impl Ui {
                 for ch in b"--:--".iter() { tb[tl] = *ch; tl += 1; }
             }
         }
-        g.text(w - 132, y0 + 9, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
+        g.text(w - 132, y0 + 7, core::str::from_utf8_unchecked(&tb[..tl]), rgb(236, 244, 255), 1);
         if dl > 0 {
-            g.text(w - 132, y0 + 26, core::str::from_utf8_unchecked(&d2[..dl]), rgb(170, 182, 200), 1);
+            g.text(w - 132, y0 + 24, core::str::from_utf8_unchecked(&d2[..dl]), rgb(170, 182, 200), 1);
         }
         g.round_rect(w - 64, cy - 5, 18, 10, 3, rgb(150, 160, 180), 200);
         g.rect(w - 45, cy - 2, 2, 4, rgb(150, 160, 180), 200);
@@ -412,14 +407,21 @@ impl Ui {
         let msg = &*core::ptr::addr_of!(SHOT_MSG);
         let ml = SHOT_MSG_LEN;
         if ml > 0 {
-            g.text(w - 330, y0 + 17, core::str::from_utf8_unchecked(&msg[..ml]), rgb(140, 230, 170), 1);
+            g.text(w - 330, y0 + 15, core::str::from_utf8_unchecked(&msg[..ml]), rgb(140, 230, 170), 1);
         }
-        if self.hover >= 0 && self.hover <= TB_APPS.len() as i32 {
-            let label = if self.hover == 0 { "开始" } else { TB_APPS[(self.hover - 1) as usize].name() };
+        if self.hover >= 0 && self.hover <= total {
+            let label = if self.hover == 0 {
+                "开始"
+            } else if self.hover <= TB_APPS.len() as i32 {
+                TB_APPS[(self.hover - 1) as usize].name()
+            } else {
+                "窗口"
+            };
             let lw = text_width(label, 1) + 22;
-            let lx = x0 + self.hover * (iw + gap) + iw / 2 - lw / 2;
-            g.round_rect(lx, y0 - 34, lw, 24, 6, rgb(48, 48, 54), 240);
-            g.text_center(lx + lw / 2, y0 - 29, label, rgb(238, 244, 252), 1);
+            let cx = if self.hover == 0 { 26 } else { x0 + (self.hover - 1) * (iw + gap) + iw / 2 };
+            let lx = cx - lw / 2;
+            g.round_rect(lx, y0 - 32, lw, 24, 4, rgb(48, 48, 54), 240);
+            g.text_center(lx + lw / 2, y0 - 27, label, rgb(238, 244, 252), 1);
         }
     }
 

@@ -68,9 +68,9 @@ unsafe fn screen_confirm(g: &Gfx, cap_mb: u64, part_mb: u64) {
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.2.2 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + title.len() as i32 * 32 + 16, 60, "1.2.3 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
-    line(g, 140, "安装介质 : HYWOS 1.2.2 ISO（UEFI 启动）", rgb(170, 190, 220));
+    line(g, 140, "安装介质 : HYWOS 1.2.3 ISO（UEFI 启动）", rgb(170, 190, 220));
     let mut b = [0u8; 96];
     let mut l = 0;
     for ch in "目标磁盘 : ".as_bytes().iter() { b[l] = *ch; l += 1; }
@@ -99,7 +99,7 @@ unsafe fn screen_msg(g: &Gfx, title: &str, body: &str, color: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.2.2 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.2.3 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, title, color, 2);
     let mut y = 260;
@@ -122,7 +122,7 @@ unsafe fn draw_progress(p: u32) {
         big2(g, x, 60, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 76, "1.2.2 安装程序", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 76, "1.2.3 安装程序", rgb(220, 236, 255), 2);
     g.rect(64, 132, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 200, "正在安装 HYWOS…", rgb(150, 210, 255), 2);
     let bx = 64;
@@ -241,36 +241,44 @@ unsafe fn screen_agreement(g: &Gfx, page: usize) {
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 60, "1.2.2 安装协议", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 60, "1.2.3 安装协议", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     let title = if page == 0 { "隐私协议" } else { "用户协议" };
     g.text(64, 150, title, rgb(150, 210, 255), 2);
     let body: &[&str] = if page == 0 {
         &[
-            "HYWOS 不收集、不上传个人数据。",
-            "仅在主动使用网络功能时发起请求。",
-            "密码仅以哈希形式保存在本地用户卷。",
-            "诊断信息仅在本机显示，不自动上传。",
+            "生效日期：2026-11-28    版本：1.2.3",
+            "1. 本系统不收集、不上传任何个人数据。",
+            "2. 仅在您主动使用网络功能时发起请求。",
+            "3. 密码仅以哈希形式保存在本地用户卷。",
+            "4. 诊断与硬件信息仅在本机显示。",
+            "5. 不向任何第三方共享或出售数据。",
+            "6. 您可随时删除用户卷中的配置文件。",
+            "7. 开发者：MEMZ-LMXDG。",
         ]
     } else {
         &[
-            "本系统按 MIT 许可提供，开发者 MEMZ-LMXDG。",
-            "安装会清空目标磁盘分区与全部数据。",
-            "请先备份重要数据再继续。",
-            "使用风险自负，请遵守当地法律法规。",
+            "生效日期：2026-11-28    版本：1.2.3",
+            "1. 本系统按 MIT 许可证授予使用许可。",
+            "2. 安装将清空目标磁盘分区与全部数据。",
+            "3. 请先备份重要数据，再继续安装。",
+            "4. 软件按“现状”提供，不附带任何担保。",
+            "5. 使用风险自负，请遵守当地法律法规。",
+            "6. 开发者不对数据丢失或损害承担责任。",
+            "7. 开发者：MEMZ-LMXDG。",
         ]
     };
     let mut y = 210;
     let mut i = 0;
     while i < body.len() {
-        g.text(64, y, body[i], rgb(190, 205, 230), 2);
-        y += 44;
+        g.text(64, y, body[i], rgb(190, 205, 230), 1);
+        y += 24;
         i += 1;
     }
     g.rect(64, 420, g.w as i32 - 128, 1, rgb(60, 80, 110), 200);
-    g.text(64, 450, if page == 0 { "同意隐私协议后继续用户协议。" } else { "同意用户协议后选择安装磁盘。" }, rgb(140, 160, 190), 2);
-    g.rect(64, 500, 420, 48, rgb(20, 60, 120), 220);
-    g.text(64, 508, "  [ Enter / Y ] 同意    [ N / Esc ] 取消  ", rgb(200, 230, 255), 2);
+    g.text(64, 450, if page == 0 { "同意隐私政策后继续用户许可协议。" } else { "同意用户许可协议后选择安装磁盘。" }, rgb(140, 160, 190), 2);
+    g.rect(64, 500, 460, 48, rgb(20, 60, 120), 220);
+    g.text(64, 508, "  [ Enter / Y ] 同意    [ N / Esc ] 拒绝  ", rgb(200, 230, 255), 2);
 }
 
 unsafe fn screen_disks(g: &Gfx, ts: &[diskfmt::Target; 4], n: usize, sel: usize) {
@@ -280,7 +288,7 @@ unsafe fn screen_disks(g: &Gfx, ts: &[diskfmt::Target; 4], n: usize, sel: usize)
         big2(g, x, 44, ch, rgb(150, 210, 255), 255);
         x += 32;
     }
-    g.text(64 + 5 * 32 + 16, 60, "1.2.2 选择安装磁盘", rgb(220, 236, 255), 2);
+    g.text(64 + 5 * 32 + 16, 60, "1.2.3 选择安装磁盘", rgb(220, 236, 255), 2);
     g.rect(64, 116, g.w as i32 - 128, 2, rgb(70, 110, 160), 200);
     g.text(64, 150, "检测到以下可安装磁盘：", rgb(190, 205, 230), 2);
     let mut y = 210;
@@ -442,12 +450,12 @@ pub unsafe fn run(g: &Gfx) -> ! {
     }
     files[n].dir = diskfmt::DIR_HYWOS;
     files[n].name = *b"VERSION    ";
-    files[n].data = b"HYWOS 1.2.2\n";
+    files[n].data = b"HYWOS 1.2.3\n";
     files[n].size = files[n].data.len();
     n += 1;
     files[n].dir = diskfmt::DIR_HYWOS;
     files[n].name = *b"INSTALL TXT";
-    files[n].data = b"HYWOS 1.2.2 installed\n";
+    files[n].data = b"HYWOS 1.2.3 installed\n";
     files[n].size = files[n].data.len();
     n += 1;
     let ok = diskfmt::install_system(&t, &files[..n], prog_cb);

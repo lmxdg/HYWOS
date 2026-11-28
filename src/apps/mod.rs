@@ -38,7 +38,7 @@ impl Terminal {
         self.hist = 0;
         self.cwd = Str80::empty();
         self.cwd.push_str(HOME);
-        self.print("HYWOS 终端 1.2.2 (x86_64 UEFI)");
+        self.print("HYWOS 终端 1.2.3 (x86_64 UEFI)");
         self.print("输入 help 查看可用命令，支持中文显示。");
         self.print("");
     }
@@ -216,7 +216,7 @@ impl Terminal {
                     }
                 }
             }
-            "uname" => self.print("HYWOS 1.2.2 x86_64 UEFI (Rust no_std kernel)"),
+            "uname" => self.print("HYWOS 1.2.3 x86_64 UEFI (Rust no_std kernel)"),
             "ring3" => {
                 let r = crate::ring3::run(false);
                 let mut i = 0;
@@ -238,7 +238,7 @@ impl Terminal {
                 }
             }
             "sysdiag" => {
-                self.print("HYWOS 1.2.2 · MEMZ-LMXDG 系统诊断");
+                self.print("HYWOS 1.2.3 · MEMZ-LMXDG 系统诊断");
                 self.print(if crate::hw::cpu().acpi_ok { "ACPI: MADT 已解析" } else { "ACPI: 未找到" });
                 self.print(if crate::power::acpi_ready() { "FADT: 已找到（软关机可用）" } else { "FADT: 未找到" });
                 let (ct, ce) = crate::hw::smp();
@@ -427,6 +427,37 @@ impl Terminal {
                     self.print(core::str::from_utf8_unchecked(&line3[..k2]));
                 } else if crate::hw::net().present {
                     self.print("固件 SNP 可用，HTTP 由固件提供");
+                }
+            }
+            "netspeed" => {
+                self.print("正在测速：http://example.com/ ...");
+                let mut buf = [0u8; 8192];
+                let t0 = crate::hw::uptime_secs();
+                match crate::http::get("http://example.com/", &mut buf) {
+                    Ok(n) => {
+                        let t1 = crate::hw::uptime_secs();
+                        let dt = if t1 > t0 { t1 - t0 } else { 0 };
+                        let mut b = [0u8; 96];
+                        let mut l = 0usize;
+                        for c in "下载 ".bytes() { b[l] = c; l += 1; }
+                        l += hw::num2(&mut b[l..], n as u32, 1);
+                        for c in " 字节，耗时 ".bytes() { b[l] = c; l += 1; }
+                        l += hw::num2(&mut b[l..], dt, 1);
+                        for c in " 秒".bytes() { b[l] = c; l += 1; }
+                        self.print(core::str::from_utf8_unchecked(&b[..l]));
+                        if dt == 0 {
+                            self.print("秒级计时：小于 1 秒，说明吞吐正常");
+                        } else {
+                            let kbps = (n as u32 / 1024) / dt;
+                            let mut c = [0u8; 72];
+                            let mut k = 0usize;
+                            for ch in "平均吞吐约 ".bytes() { c[k] = ch; k += 1; }
+                            k += hw::num2(&mut c[k..], kbps, 1);
+                            for ch in " KB/s".bytes() { c[k] = ch; k += 1; }
+                            self.print(core::str::from_utf8_unchecked(&c[..k]));
+                        }
+                    }
+                    Err(_) => self.print("测速失败：检查网络连通性或 URL"),
                 }
             }
             "ping" => {
@@ -1031,7 +1062,7 @@ unsafe fn draw_settings(s: &mut Settings, g: &Gfx, x: i32, y: i32, w: i32, h: i3
         }
         2 => {
             g.text(cx, cy, "软件更新", rgb(36, 42, 58), 2);
-            g.text(cx, cy + 34, "当前版本 1.2.2 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
+            g.text(cx, cy + 34, "当前版本 1.2.3 · GitHub Releases 在线检测", rgb(132, 140, 158), 1);
             let by = cy + 58;
             btn(g, cx, by, 140, 34, "检查更新 (C)", true);
             let can_dl = s.update_state == 2;
@@ -1253,11 +1284,11 @@ unsafe fn draw_about(g: &Gfx, x: i32, y: i32, w: i32, h: i32) {
     g.round_rect(lx - 6, ly - 6, 108, 108, 24, rgb(16, 26, 58), 40);
     g.blit_rgba(lx, ly, 96, 96, &crate::logo::LOGO_RGBA, crate::logo::LOGO_SIZE as i32, crate::logo::LOGO_SIZE as i32);
     g.big_text(cx - 40, y + 138, "HYWOS", rgb(28, 36, 56), 255);
-    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.2", rgb(108, 118, 140), 1);
+    g.text_center(cx, y + 190, "混合内核桌面版 · 版本 1.2.3", rgb(108, 118, 140), 1);
     let vx = x + 22 + 40;
     let mut ry = y + 212;
     g.text(x + 22, ry, "内核", rgb(68, 78, 98), 1);
-    g.text(vx, ry, "HYWOS Kernel 1.2.2（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
+    g.text(vx, ry, "HYWOS Kernel 1.2.3（C/C++ 混合内核 + Rust UI）", rgb(68, 78, 98), 1);
     ry += 19;
     g.text(x + 22, ry, "架构", rgb(68, 78, 98), 1);
     let mut ab = [0u8; 64];
@@ -1700,7 +1731,7 @@ unsafe fn do_check_update(s: &mut Settings) {
     match crate::updater::check_update() {
         crate::updater::Check::Latest(_a, _b, _c) => {
             s.update_state = 1;
-            set_update_msg(s, true, "已是最新版本 1.2.2");
+            set_update_msg(s, true, "已是最新版本 1.2.3");
         }
         crate::updater::Check::Available(r) => {
             s.release = r;

@@ -92,6 +92,7 @@ pub struct Ui {
     pub last_click_frame: u32,
     pub last_click_idx: i32,
     pub all_min: bool,
+    pub control_center: bool,
 }
 
 impl Ui {
@@ -134,6 +135,7 @@ impl Ui {
             last_click_frame: 0,
             last_click_idx: -1,
             all_min: false,
+            control_center: false,
         };
         load_wallpaper();
         ui.wallpaper();
@@ -281,6 +283,7 @@ impl Ui {
     fn tb_slot_at(&self, mx: i32, my: i32) -> i32 {
         if my >= TB_H { return -2; }
         if mx >= self.w() - 8 { return -3; }
+        if mx >= self.w() - 200 && mx < self.w() - 8 { return -4; }
         if mx >= 4 && mx < 52 { return 0; }
         let (x0, iw, gap) = self.tb_group();
         let (_, rn) = self.run_slots();
@@ -303,6 +306,73 @@ impl Ui {
             crate::logo::LOGO_SIZE as i32,
             crate::logo::LOGO_SIZE as i32,
         );
+    }
+
+    fn cc_geom(&self) -> (i32, i32, i32, i32) {
+        let pw = 320i32;
+        let ph = 236i32;
+        (self.w() - pw - 12, TB_H + 8, pw, ph)
+    }
+
+    unsafe fn draw_cc(&self) {
+        let g = &self.g;
+        let (px, py, pw, ph) = self.cc_geom();
+        g.round_rect(px - 4, py - 4, pw + 8, ph + 8, 14, 0x000000, 90);
+        g.round_rect(px, py, pw, ph, 12, rgb(36, 36, 42), 250);
+        g.round_rect_outline(px, py, pw, ph, 12, rgb(255, 255, 255), 34);
+        g.text(px + 18, py + 14, "控制中心", rgb(232, 240, 252), 1);
+        let mut b = [0u8; 8];
+        g.text(px + 18, py + 52, "亮度", rgb(198, 208, 226), 1);
+        let mut l = hw::num2(&mut b, crate::display::brightness(), 1);
+        b[l] = b'%'; l += 1;
+        g.text(px + 120, py + 52, core::str::from_utf8_unchecked(&b[..l]), rgb(150, 168, 196), 1);
+        g.round_rect(px + 210, py + 42, 48, 30, 8, rgb(56, 60, 72), 255);
+        g.text_center(px + 234, py + 49, "-", rgb(238, 244, 252), 1);
+        g.round_rect(px + 264, py + 42, 48, 30, 8, rgb(56, 60, 72), 255);
+        g.text_center(px + 288, py + 49, "+", rgb(238, 244, 252), 1);
+        g.text(px + 18, py + 96, "音量", rgb(198, 208, 226), 1);
+        let mut l2 = hw::num2(&mut b, crate::display::volume(), 1);
+        b[l2] = b'%'; l2 += 1;
+        g.text(px + 120, py + 96, core::str::from_utf8_unchecked(&b[..l2]), rgb(150, 168, 196), 1);
+        g.round_rect(px + 210, py + 86, 48, 30, 8, rgb(56, 60, 72), 255);
+        g.text_center(px + 234, py + 93, "-", rgb(238, 244, 252), 1);
+        g.round_rect(px + 264, py + 86, 48, 30, 8, rgb(56, 60, 72), 255);
+        g.text_center(px + 288, py + 93, "+", rgb(238, 244, 252), 1);
+        g.round_rect(px + 20, py + 150, 120, 36, 8, rgb(52, 84, 140), 255);
+        g.text_center(px + 80, py + 159, "重启", rgb(230, 240, 255), 1);
+        g.round_rect(px + 160, py + 150, 140, 36, 8, rgb(140, 54, 54), 255);
+        g.text_center(px + 230, py + 159, "关机", rgb(255, 235, 235), 1);
+        let net = if crate::net::info().present { "网络：已连接" } else { "网络：未连接" };
+        g.text(px + 18, py + 204, net, rgb(150, 168, 196), 1);
+    }
+
+    unsafe fn cc_click(&mut self) -> bool {
+        let (px, py, pw, ph) = self.cc_geom();
+        let mx = self.input.x;
+        let my = self.input.y;
+        if mx < px || mx >= px + pw || my < py || my >= py + ph {
+            return false;
+        }
+        if my > py + 42 && my < py + 72 {
+            if mx > px + 210 && mx < px + 258 {
+                crate::display::set_brightness(crate::display::brightness().saturating_sub(10));
+            } else if mx > px + 264 && mx < px + 312 {
+                crate::display::set_brightness((crate::display::brightness() + 10).min(100));
+            }
+        } else if my > py + 86 && my < py + 116 {
+            if mx > px + 210 && mx < px + 258 {
+                crate::display::set_volume(crate::display::volume().saturating_sub(10));
+            } else if mx > px + 264 && mx < px + 312 {
+                crate::display::set_volume((crate::display::volume() + 10).min(100));
+            }
+        } else if my > py + 150 && my < py + 186 {
+            if mx > px + 20 && mx < px + 140 {
+                crate::power::reboot();
+            } else if mx > px + 160 && mx < px + 300 {
+                crate::power::shutdown();
+            }
+        }
+        true
     }
 
     unsafe fn draw_taskbar(&self) {
@@ -552,7 +622,7 @@ impl Ui {
         if self.hover == 201 { g.round_rect(px2 - 6, by + 4, 34, 28, 6, rgb(255, 255, 255), 26); }
         g.round_rect(px2 + 2, by + 10, 16, 14, 2, rgb(214, 222, 236), 230);
         g.rect(px2 + 8, by + 7, 4, 3, rgb(214, 222, 236), 230);
-        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.2", rgb(120, 130, 148), 1);
+        g.text_center(px + pw / 2, py + ph - 4, "HYWOS 1.2.3", rgb(120, 130, 148), 1);
     }
 
     unsafe fn draw_desk_icons(&self) {
@@ -614,6 +684,8 @@ impl Ui {
                 }
                 FOCUS = if last != usize::MAX { last } else { 0 };
             }
+        } else if slot == -4 {
+            self.control_center = !self.control_center;
         } else if slot == 0 {
             self.launchpad = !self.launchpad;
             self.lp_t = 0;
@@ -817,6 +889,11 @@ impl Ui {
                 }
             }
             if self.input.clicked {
+                if self.control_center {
+                    if !self.cc_click() && self.tb_slot_at(self.input.x, self.input.y) != -4 {
+                        self.control_center = false;
+                    }
+                }
                 if self.input.y < TB_H {
                     self.launchpad = false;
                     self.lp_t = 0;
@@ -1105,6 +1182,7 @@ impl Ui {
         }
         if focus < 3 { self.draw_window(focus, true); }
         self.draw_taskbar();
+if self.control_center { self.draw_cc(); }
         if self.menu {
             self.draw_menu();
         }
